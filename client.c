@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.19 1999/11/03 20:23:21 vwelch Exp $
+ * $Id: client.c,v 1.20 2000/02/23 17:20:15 vwelch Exp $
  *
  */
 
@@ -447,9 +447,7 @@ char *argv[];
 	    error_exit();
 	}
 
-	if (my_context.verbose &&
-	    (geteuid() == 0) &&
-	    (my_context.target_cache_uid != -1)) {
+	if (my_context.chown_target_cache) {
 	    printf("Changing owner of credentials cache to %s (uid = %d gid = %d\n",
 		   my_context.target_cache_owner,
 		   my_context.target_cache_uid,
@@ -1391,26 +1389,6 @@ should_initialize_target_cache(krb525_client_context *my_context)
 	return 1;
 
     /*
-     * If we are coming from a keytab, then yes
-     */
-    if (my_context->use_keytab) {
-	if (my_context->verbose)
-	    printf("Will initialze cache because we are using keytab\n");
-
-	return 1;
-    }
-
-    /*
-     * If the target ticket is tgt then yes
-     */
-    if (is_tgt(my_context, my_context->target_sprinc)) {
-	if (my_context->verbose)
-	    printf("Will initialze cache because target service is tgt\n");
-
-	return 1;
-    }
-
-    /*
      * Else, return no
      */
     return 0;
@@ -1472,7 +1450,28 @@ should_run_aklog(krb525_client_context *my_context)
 
     if (my_context->run_aklog)
 	return 1;
-    
+
+    /*
+     * Dont run aklog by default if we are root
+     */
+    if (geteuid() == 0) {
+	if (my_context->verbose)
+	    printf("Not running aklog becuase we're root\n");
+	return 0;
+    }
+
+    /*
+     * If the output cache is not the default cache, then
+     * running aklog won't help since aklog only looks in the target
+     * cache
+     */
+    if (strcmp(my_context->target_cache_name,
+	       krb5_cc_default_name(my_context->krb5_context)) != 0) {
+	if (my_context->verbose)
+	    printf("Not running aklog because target cache != default cache\n");
+	return 0;
+    }
+
     /*
      * Check with appdefaults, if they say no then no
      */
