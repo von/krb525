@@ -1,0 +1,17 @@
+dnl
+dnl configure for krb525/test
+dnl
+dnl $Id: configure.in,v 1.1 1999/10/08 22:19:08 vwelch Exp $
+dnl
+AC_INIT(test-conf.sh.in)
+
+# Path to top of build tree
+BUILD_TOP=..
+AC_SUBST(BUILD_TOP)
+
+TEST_SCRIPTS="test-conf.sh"
+TEST_FILES="test.conf"
+
+AC_OUTPUT($TEST_SCRIPTS $TEST_FILES)
+
+chmod +x $TEST_SCRIPTS

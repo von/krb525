@@ -1,0 +1,53 @@
+#
+# Test configuration file for krb525
+#
+
+version = 0.2.0 ;
+
+allowed_clients =
+	*@FOO.EDU
+	bob@BAR.EDU
+	mary@BAR.EDU
+	sally@BAR.EDU
+	john@BAR.EDU
+	;
+
+disallowed_clients =
+	mark@FOO.EDU
+	jane@FOO.EDU
+	mary@BAR.EDU	# Override allowed_clients
+	;
+
+bob@BAR.EDU = {
+	allowed_hosts = sangamon.ncsa.uiuc.edu ;
+}
+
+sally@BAR.EDU = {
+	disallowed_hosts = sangamon.ncsa.uiuc.edu ;
+	source_clients = *@FOOBAR.EDU ;
+	disallowed_source_clients = tom@FOOBAR.EDU ;
+}
+
+john@BAR.EDU = {
+	target_clients = */tapeadmin@BAR.EDU ;
+	disallowed_target_clients = fred/tapeadmin@BAR.EDU ;
+	target_servers = host/*@BAR.EDU ;
+	disallowed_target_servers = host/kdc.bar.edu@BAR.EDU ;
+}
+
+allowed_hosts = *.ncsa.uiuc.edu ;
+
+disallowed_hosts = pecos.ncsa.uiuc.edu ;
+
+client_mappings = {
+	paul@FOO.EDU = frank@FOO.EDU ;
+	ben@FOO.EDU = *@FOOBAR.EDU ;
+}
+
+disallowed_target_clients = admin@FOOBAR.EDU ;
+
+server_mappings = {
+	krbtgt/FOO.EDU@FOO.EDU = */*@FOO.EDU ;
+}
+
+disallowed_target_servers = afs@FOO.EDU ;

@@ -1,0 +1,167 @@
+#!/bin/sh
+######################################################################
+#
+# test-conf.sh
+#
+# Test out configration parsing and make sure it works.
+#
+######################################################################
+
+BUILD_TOP=@BUILD_TOP@
+
+test_conf="test.conf"
+
+check_conf="$BUILD_TOP/krb525_check_conf"
+
+######################################################################
+
+should_succeed() {
+  echo "This should succeed:"
+  $*
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+}
+
+should_fail() {
+  echo "This should fail:"
+  $*
+  if [ $? -ne 1 ]; then
+    exit 1
+  fi
+}
+
+######################################################################
+#
+# Make sure everything is there
+#
+
+if [ ! -r $test_conf ]; then
+  echo "Test configuration file ($test_conf) not present"
+  exit 1
+fi
+
+if [ ! -x $check_conf ]; then
+  echo "Configuration checking program ($check_conf) not present or executable"
+  exit 1
+fi
+
+######################################################################
+#
+# Test stuff
+#
+
+echo ""
+echo "Checking default allowed_clients:"
+
+should_fail $check_conf -c frank@BAR.EDU $test_conf
+should_fail $check_conf -c bob@FOOBAR.EDU $test_conf
+
+
+echo ""
+echo "Checking default disallowed_clients:"
+
+should_fail $check_conf -c mark@FOO.EDU $test_conf
+should_fail $check_conf -c mary@BAR.EDU $test_conf
+
+
+echo ""
+echo "Checking client's allowed_hosts:"
+
+should_fail $check_conf -c bob@BAR.EDU -h modi4.ncsa.uiuc.edu $test_conf
+should_fail $check_conf -c sally@BAR.EDU -h www.mit.edu $test_conf
+
+should_succeed $check_conf -c bob@BAR.EDU -C bob@BAR.EDU -h sangamon.ncsa.uiuc.edu $test_conf
+should_succeed $check_conf -c sally@BAR.EDU -C sally@BAR.EDU -h pecos.ncsa.uiuc.edu $test_conf
+
+
+echo ""
+echo "Checking client's disallowed_hosts:"
+
+should_fail $check_conf -c sally@BAR.EDU -C sally@BAR.EDU -h sangamon.ncsa.uiuc.edu $test_conf
+should_fail $check_conf -c bob@BAR.EDU -C bob@BAR.EDU -h pecos.ncsa.uiuc.edu $test_conf
+
+
+echo ""
+echo "Checking client's source_clients:"
+
+should_fail $check_conf -r sally@BAR.EDU -c mary@BAR.EDU $test_conf
+should_succeed $check_conf -r sally@BAR.EDU -c sally@FOOBAR.EDU -C sally@FOOBAR.EDU $test_conf
+
+
+echo ""
+echo "Checking client's disallowed_source_clients:"
+
+should_fail $check_conf -r sally@BAR.EDU -c tom@FOOBAR.EDU -C tom@FOOBAR.EDU $test_conf
+
+
+echo ""
+echo "Checking client's target_clients:"
+
+should_fail $check_conf -c john@BAR.EDU -C tom@BAR.EDU $test_conf
+should_succeed $check_conf -c john@BAR.EDU -C tom/tapeadmin@BAR.EDU $test_conf
+
+echo ""
+echo "Checking client's disallowed_target_clients:"
+
+should_fail $check_conf -c john@BAR.EDU -C fred/tapeadmin@BAR.EDU $test_conf
+
+
+echo ""
+echo "Checking client's target_servers:"
+
+should_fail $check_conf -c john@BAR.EDU -S krbtgt/BAR.EDU@BAR.EDU $test_conf
+should_succeed $check_conf -c john@BAR.EDU -S host/www.bar.edu@BAR.EDU $test_conf
+
+
+echo ""
+echo "Checking client's disallowd_target_servers:"
+
+should_fail $check_conf -c john@BAR.EDU -S host/kdc.bar.edu@BAR.EDU $test_conf
+
+
+echo ""
+echo "Check default - make sure ticket client matches requestor"
+echo " This should fail:"
+should_fail $check_conf -c paul@FOO.EDU -r robert@FOO.EDU $test_conf
+
+
+echo ""
+echo "Check default allowed_hosts:"
+
+should_fail $check_conf -c paul@FOO.EDU -C paul@FOO.EDU -h www.mit.edu $test_conf
+should_succeed $check_conf -c paul@FOO.EDU -C paul@FOO.EDU -h sangamon.ncsa.uiuc.edu $test_conf
+
+
+echo ""
+echo "Check default disallowd_hosts:"
+should_fail $check_conf -c paul@FOO.EDU -C paul@FOO.EDU -h pecos.ncsa.uiuc.edu $test_conf
+
+
+echo ""
+echo "Check default client_mappings:"
+should_fail $check_conf -c paul@FOO.EDU -C bob@FOO.EDU $test_conf
+should_succeed $check_conf -c paul@FOO.EDU -C frank@FOO.EDU $test_conf
+
+
+echo ""
+echo "Check default disallowed_target_clients:"
+
+should_fail $check_conf -c ben@FOO.EDU -C admin@FOOBAR.EDU $test_conf
+should_succeed $check_conf -c ben@FOO.EDU -C fred@FOOBAR.EDU $test_conf
+
+echo ""
+echo "Check default server_mappings:"
+
+should_fail $check_conf -c ben@FOO.EDU -s host/www.foo.edu@FOO.EDU -S krbtgt/FOO.EDU@FOO.EDU $test_conf
+should_succeed $check_conf -c ben@FOO.EDU -s krbtgt/FOO.EDU@FOO.EDU -S host/www.foo.edu@FOO.EDU $test_conf
+
+echo ""
+echo "Check default disallowed_target_servers:"
+should_fail $check_conf -c ben@FOO.EDU -s krbtgt/FOO.EDU@FOO.EDU -S afs@FOO.EDU $test_conf
+
+echo ""
+echo "SUCCESS"
+echo ""
+exit 0
+
