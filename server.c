@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.7 1997/10/17 20:15:33 vwelch Exp $
+ * $Id: server.c,v 1.8 1999/10/06 17:32:50 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -43,7 +43,7 @@ static int validate_request_with_kt(krb5_context,
 static char validate_error[256];
 
 
-void
+int
 main(argc, argv)
     int argc;
     char *argv[];

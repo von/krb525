@@ -1,3 +1,9 @@
+1999-10-06  Von Welch  <vwelch@ncsa.uiuc.edu>
+
+	* client.c (argv): Changed type of main() to int
+
+	* server.c (main): Changed type of main() to int
+
 Fri Oct 17 14:30:23 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
 
 	* server.c: progname was not getting set correctly. Use progname

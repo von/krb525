@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.9 1997/11/10 19:57:08 vwelch Exp $
+ * $Id: client.c,v 1.10 1999/10/06 17:32:50 vwelch Exp $
  *
  */
 
@@ -79,7 +79,7 @@ static char *progname;			/* This program's name */
 #define GATEWAY_DEFAULT_TKT_OPTIONS	0
 
 
-void
+int
 main(argc, argv)
 int argc;
 char *argv[];
