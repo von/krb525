@@ -1,7 +1,7 @@
 .\"
 .\" krb525.conf man page
 .\"
-.\" $Id: krb525.conf.5,v 1.1 1997/09/25 19:28:50 vwelch Exp $
+.\" $Id: krb525.conf.5,v 1.2 1999/10/06 19:17:49 vwelch Exp $
 .\"
 .TH KRB525.CONF 5
 .SH NAME
@@ -56,6 +56,12 @@ return to be ignored.
 The following items are currently used in the 
 .I krb525.conf
 file:
+.IP version
+This is a required item given the version of
+.I krb525d
+that this file is intended to be used with.
+.I krb525d
+will refuse to use a file that is newer than it is.
 .IP allowed_clients
 This item should be followed by a list of values which are the names
 of the client principals allowed to connect and use the krb525d
@@ -105,6 +111,9 @@ that client..
 #
 # Anything after a '#' is a comment
 #
+
+# For version 0.1.x or greater of krb525d
+version = 0.1.0 ;
 
 allowed_hosts =
 	10.1.*

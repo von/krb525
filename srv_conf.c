@@ -4,7 +4,7 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.4 1997/09/25 19:28:54 vwelch Exp $
+ * $Id: srv_conf.c,v 1.5 1999/10/06 19:17:49 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -35,6 +35,7 @@
 #include "srv_conf.h"
 #include "parse_conf.h"
 #include "server.h"
+#include "version.h"
 
 char srv_conf_error[255] = "No error";
 
@@ -42,6 +43,8 @@ char srv_conf_error[255] = "No error";
 #define BUFFER_SIZE	256
 
 
+static int check_conf_version();
+static char *get_first_value(pconf_entry *);
 static pconf_entry *find_string_in_list(pconf_entry *,
 					char *);
 static pconf_entry *find_string_in_regex_list(pconf_entry *,
@@ -73,12 +76,24 @@ static pconf_entry	*conf = NULL;
 int
 init_conf(char *conf_file)
 {
+
     if ((conf = parse_conf(conf_file, NULL)) == NULL) {
 	strcpy(srv_conf_error, pconf_error);
-	return -1;
+	goto error;
     }
 
+    if (check_conf_version())
+	goto error;
+
     return 0;
+
+ error:
+    if (conf) {
+	free_pconf_enteries(conf);
+	conf = NULL;
+    }
+
+    return -1;
 }
 
 
@@ -90,6 +105,81 @@ free_conf()
 {
     free_pconf_enteries(conf);
     conf = NULL;
+}
+
+
+
+/*
+ * Check the configuration file version number and see if it's
+ * OK. Returns 0 if ok, -1 otherwise.
+ */
+static int
+check_conf_version()
+{
+    pconf_entry		*entry;
+
+    char		*conf_version_string;
+    int			conf_version_major;
+    int			conf_version_minor;
+    int			conf_version_patchlevel;
+
+    int			my_version_major;
+    int			my_version_minor;
+    int			my_version_patchlevel;
+
+    int			conf_newer = 0;
+
+
+    /* Check version string of configuration file */
+    entry = find_string_in_list(conf, "version");
+
+    conf_version_string = get_first_value(entry);
+
+    if (conf_version_string == NULL) {
+	sprintf(srv_conf_error, "No version number in configuration file");
+	return -1;
+    }
+
+    /* Parse configuration file version */
+    if (sscanf(conf_version_string,
+	       "%d.%d.%d",
+	       &conf_version_major,
+	       &conf_version_minor,
+	       &conf_version_patchlevel) != 3) {
+	sprintf(srv_conf_error,
+		"Error parsing configuration file version string");
+	return -1;
+    }
+
+    /* Parse our version number */
+    if (sscanf(KRB525_VERSION_STRING,
+	       "%d.%d.%d",
+	       &my_version_major,
+	       &my_version_minor,
+	       &my_version_patchlevel) != 3) {
+	sprintf(srv_conf_error,
+		"Error parsing my version string (shouldn't happen)");
+	return -1;
+    }
+
+    /* Make sure file is not newer than me */
+    if (conf_version_major > my_version_major)
+	conf_newer = 1;
+
+    if ((conf_version_major == my_version_major) &&
+	(conf_version_minor > my_version_minor))
+	conf_newer = 1;
+
+    /* Patchlevel should not make a difference */
+
+    if (conf_newer) {
+	sprintf(srv_conf_error,
+		"Configuration file version number is newer than mine");
+	return -1;
+    }
+
+    /* Checks for too old of a file could eventually go here */
+    return 0;
 }
 
 
@@ -289,6 +379,21 @@ done:
 
 
 
+
+/*
+ * Return the first string in an entry
+ */
+static char *
+get_first_value(pconf_entry *entry)
+{
+    if (!entry || !entry->values)
+	return NULL;
+
+    return *(entry->values);
+}
+
+
+
 /*
  * Find string in list and return entry
  */
@@ -311,6 +416,7 @@ find_string_in_list(pconf_entry *entry,
 
     return NULL;
 }
+
 
 
 

@@ -53,6 +53,9 @@ Installing the Configuration File
   # Basic krb525.conf
   #
 
+  # Required - what is the minimum version of krb525d
+  version = 0.1.0 ;
+
   allowed_hosts =
     hosta.domain.com
     hostb.domain.com

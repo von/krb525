@@ -1,5 +1,14 @@
 1999-10-06  Von Welch  <vwelch@ncsa.uiuc.edu>
 
+	* INSTALLATION: Added documentation about version
+
+	* krb525.conf.5 (client_mappings): Added documentation about version
+
+	* krb525.conf (allowed_hosts): Added version to file and sanitized it
+	
+	* srv_conf.c (init_conf): Added checking for version in
+	configuration file
+
 	* parse_conf.c (free_pconf_enteries): Fixed bug that caused
 	segfault when free_pconf_enteries() was called.
 
