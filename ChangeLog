@@ -1,0 +1,11 @@
+Thu Oct  2 10:44:36 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
+
+	* ChangeLog: Created ChangeLog file.
+
+	* client.c [AFS_KRB5]: Added exec of aklog
+
+	* acconfig.h: Added AFS_KRB5
+
+	* configure.in: Check for using AFS-KRB5 migration kit and define
+	AFS_KRB5 in config.h if we are.
+
