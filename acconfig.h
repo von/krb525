@@ -1,7 +1,7 @@
 /*
  * acconfig.h for krb525
  *
- * $Id: acconfig.h,v 1.1 1997/09/25 19:28:39 vwelch Exp $
+ * $Id: acconfig.h,v 1.2 1997/10/02 15:54:06 vwelch Exp $
  */
 
 /* Our target installationpath */
@@ -12,3 +12,6 @@
 
 /* Define if you have the regcomp function */
 #undef HAVE_REGCOMP
+
+/* Define if you have the AFS-KRB5 migration kit */
+#undef AFS_KRB5

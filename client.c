@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.5 1997/09/30 15:39:57 vwelch Exp $
+ * $Id: client.c,v 1.6 1997/10/02 15:54:07 vwelch Exp $
  *
  */
 
@@ -29,6 +29,10 @@
 #include <stdlib.h>
 #else
 extern char *malloc();
+#endif
+
+#ifdef AFS_KRB5
+#include <sys/stat.h>
 #endif
 
 extern int optind;
@@ -121,6 +125,12 @@ char *argv[];
     int use_keytab = 0;
     char *keytab_name = NULL;
 
+#ifdef AFS_KRB5
+    /* Are we running aklog */
+    krb5_boolean run_aklog = 0;
+    krb5_boolean dont_run_aklog = 0;
+#endif /* AFS_KRB5 */
+	
     krb5_error *err_ret;
     krb5_ap_rep_enc_part *rep_ret;
 
@@ -128,6 +138,7 @@ char *argv[];
 
     int arg;
     int arg_error = 0;
+    char *options;
 
     int verbose = 0;
 
@@ -139,9 +150,26 @@ char *argv[];
     else
 	progname = argv[0];
 
+    options = 
+#ifdef AFS_KRB5
+	"aA"
+#endif
+	"c:C:g:h:i:ko:p:s:S:t:u:vV"
+	;
+
     /* Process arguments */
-    while ((arg = getopt(argc, argv, "c:C:g:h:i:ko:p:s:S:t:u:vV")) != EOF)
+    while ((arg = getopt(argc, argv, options)) != EOF)
 	switch (arg) {
+#ifdef AFS_KRB5
+	case 'a':
+	    run_aklog = 1;
+	    break;
+
+	case 'A':
+	    dont_run_aklog = 1;
+	    break;
+#endif /* AFS_KRB5 */
+
 	case 'c':
 	    cname = optarg;
 	    break;
@@ -222,9 +250,20 @@ char *argv[];
 	arg_error++;
     }
 
+#ifdef AFS_KRB5
+    if (run_aklog && dont_run_aklog) {
+	fprintf(stderr,	"%s: Cannot specify both -a and -A\n", progname);
+	arg_error++;
+    }
+#endif /* AFS_KRB5 */
+
     if (arg_error) {
 	fprintf(stderr, "%s: [<options>]\n"
 		" Options are:\n"
+#ifdef AFS_KRB5
+		"   -a                       Run aklog after acquiring new credentials\n"
+		"   -A                       Do not run aklog\n"
+#endif /* AFS_KRB5 */
 		"   -c <client name>         Client for credentials to convert\n"
 		"   -C <target client>       Client to convert to\n"
 		"   -h <server host>         Host where server is running\n"
@@ -585,7 +624,7 @@ char *argv[];
 
     /* Get our credentials for the gateway */
     if (verbose)
-	printf("Getting credentials for krb525d (%s for %s) \n",
+	printf("Getting credentials for krb525d (%s for %s)\n",
 	       krb525_cname, krb525_sname);
 
     if (use_keytab)
@@ -597,7 +636,7 @@ char *argv[];
 
     if (retval) {
 	/* Detailed error message already printed */
-	fprintf(stderr, "Couldn't get ticket - %s for %s",
+	fprintf(stderr, "Couldn't get ticket - %s for %s\n",
 		 krb525_cname, krb525_sname);
 	error_exit();
     }
@@ -758,6 +797,41 @@ char *argv[];
 	    perror("Setting owner of credentials cache");
 	    error_exit();
 	}
+
+#ifdef AFS_KRB5	
+	/*
+	 * If we weren't explicitly told not to run or not to run
+	 * aklog then check the configuration file.
+	 */
+	if (!run_aklog && !dont_run_aklog)
+	    krb5_appdefault_boolean(context, progname, &default_realm,
+				    "krb5_run_aklog", 0, &run_aklog);
+
+	if (run_aklog) {
+	    char *aklog_path;
+	    struct stat st;
+
+	    krb5_appdefault_string(context, progname, &default_realm,
+				   "krb5_aklog_path", INSTALLPATH "bin/aklog",
+				   &aklog_path);
+
+	    /*
+	     * Make sure it exists before we try to run it
+	     */
+	    if (stat(aklog_path, &st) == 0) {
+		if (verbose)
+		    printf("Running %s\n", aklog_path);
+
+		system(aklog_path);
+	    } else {
+		if (verbose)
+		    printf("Can't run aklog: %s doesn't exist",
+			   aklog_path);
+	    }
+
+	    free(aklog_path);
+	}	
+#endif /* AFS_KRB5 */
 
 	break;
 

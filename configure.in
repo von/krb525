@@ -1,7 +1,7 @@
 dnl
 dnl configure.in for krb525
 dnl
-dnl $Id: configure.in,v 1.2 1997/09/25 19:28:43 vwelch Exp $
+dnl $Id: configure.in,v 1.3 1997/10/02 15:54:08 vwelch Exp $
 dnl
 AC_INIT(krb525.h)
 dnl
@@ -76,6 +76,24 @@ dnl
 INSTALLPATH=${krb525_cv_install_path}
 AC_DEFINE_UNQUOTED(INSTALLPATH, "$INSTALLPATH")
 dnl
+dnl Do we have the AFS-KRB5 migration kit installed?
+dnl
+save_LDFLAGS=$LDFLAGS
+LDFLAGS="-L${krb525_cv_krb5_path}/lib"
+AC_CHECK_LIB(krb5, krb5_appdefault_boolean,
+  [krb525_cv_afs_krb5=yes],
+  [krb525_cv_afs_krb5=no],
+  [-lcom_err]
+)
+LDFLAGS=$save_LDFLAGS
+dnl
+AC_MSG_CHECKING([if we are using AFS-KRB5 migration kit])
+AC_ARG_WITH(afs-krb5,
+  [  --with-afs-krb5             We have the NRL AFS-KRB5 Migration Kit],
+  [krb525_cv_afs_krb5=${withval}],
+)
+AC_MSG_RESULT([${krb525_cv_afs_krb5}])
+dnl
 dnl Figure out rest of stuff we need for Makefile
 dnl
 K5LIBPATH=-L${krb5dir}/lib
@@ -97,6 +115,11 @@ if test "$krb525_cv_k5_db_code" = "yes" ; then
   fi
   K5_DB_INC_PATH="-I${krb5objdir}/include -I${krb5objdir}/include/krb5 -I${krb5srcdir}/include -I${krb5srcdir}/include/krb5"
 fi   
+dnl
+dnl
+if test "$krb525_cv_afs_krb5" = "yes" ; then
+  AC_DEFINE(AFS_KRB5)
+fi
 dnl
 dnl Check to see if we need "netlibs" (specifically, libnsl and libsocket)
 dnl
@@ -127,10 +150,12 @@ int main() { return regcomp(&x,"pat.*",0) || regexec(&x,"pattern",1,&m,0); }
 dnl
 dnl compre/step
 dnl
+save_LIBS=$LIBS
 LIBS=-lgen
 dnl this will fail if there's no compile/step in -lgen, or if there's
 dnl no -lgen.  This is fine.
 AC_CHECK_FUNCS(compile step, have_func_compile=yes)
+LIBS=$save_LIBS
 dnl
 if test "$ac_cv_func_regcomp" = yes ; then
   AC_MSG_RESULT([Using re_comp for regular expression matching])
