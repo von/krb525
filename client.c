@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.17 1999/11/02 16:54:25 vwelch Exp $
+ * $Id: client.c,v 1.18 1999/11/02 21:48:12 vwelch Exp $
  *
  */
 
@@ -99,6 +99,7 @@ typedef struct _krb525_client_context {
     krb5_ccache			target_ccache;
     char			*target_cache_name;
     krb5_boolean		initialize_cache;
+    krb5_boolean		dont_initialize_cache;
 
     /* Do we chown the target cache, and who should own it */
     krb5_boolean		chown_target_cache;
@@ -117,6 +118,15 @@ typedef struct _krb525_client_context {
 } krb525_client_context;
 
 
+static int parse_commandline(krb525_client_context *,
+			     int,
+			     char **);
+
+static krb5_error_code get_creds(krb525_client_context *,
+				 krb5_principal,
+				 krb5_principal,
+				 krb5_flags,
+				 krb5_creds *);
 
 static krb5_error_code get_creds_with_keytab(krb5_context,
 					     krb5_principal,
@@ -132,11 +142,36 @@ static krb5_error_code get_creds_with_ccache(krb5_context,
 					     krb5_creds *);
 
 static int connect_to_krb525d(krb525_client_context *);
-			      
+
+static krb5_error_code setup_caches(krb525_client_context *);
+
+static krb5_error_code setup_principals(krb525_client_context *);
+
+static krb5_error_code authenticate_to_krb525d(krb525_client_context *);
+
+static krb5_error_code store_converted_ticket(krb525_client_context *,
+					      krb5_data *);
+
+static krb5_boolean should_initialize_target_cache(krb525_client_context *);
+
+static krb5_boolean should_chown_target_cache(krb525_client_context *);
+
+static krb5_boolean is_tgt(krb525_client_context *,
+			   krb5_principal);
+
 static int get_guid(char *,
 		    uid_t *,
 		    gid_t *);
 
+
+#ifdef AFS_KRB5
+static krb5_boolean should_run_aklog(krb525_client_context *my_context);
+
+static krb5_boolean is_afs_service(krb525_client_context *,
+				   krb5_principal);
+
+static void run_aklog(krb525_client_context *);
+#endif /* AFS_KRB5 */
 
 
 /* Default options if we are authenticating from keytab */
@@ -158,19 +193,13 @@ char *argv[];
     krb525_client_context	my_context;
 
     krb5_data recv_data;
-    krb5_data cksum_data;
     krb5_error_code retval;
     
     int resp_status;
     int exit_code = 0;
 
-    krb5_error *err_ret;
-    krb5_ap_rep_enc_part *rep_ret;
-
     krb5_data message;
 
-    int arg;
-    int arg_error = 0;
 
 
     /* Initialize my context */
@@ -182,150 +211,12 @@ char *argv[];
     my_context.krb525_tkt_options = DEFAULT_KRB525_TKT_OPTIONS;
 
 
-    /* Get our name, removing preceding path */
-    if (my_context.progname = strrchr(argv[0], '/'))
-	my_context.progname++;
-    else
-	my_context.progname = argv[0];
-
-    /* Process arguments */
-    while ((arg = getopt(argc, argv, "aAc:C:g:h:i:ko:p:s:S:t:u:UvV")) != EOF)
-	switch (arg) {
-	case 'a':
-#ifdef AFS_KRB5
-	    my_context.run_aklog = 1;
-#else
-	    fprintf(stderr, "%s: -a option not supported\n", progname);
-	    arg_error++;
-#endif
-	    break;
-
-	case 'A':
-#ifdef AFS_KRB5
-	    my_context.dont_run_aklog = 1;
-#else
-	    fprintf(stderr, "%s: ignoring -A, not supported\n", progname);
-#endif
-	    break;
-
-
-	case 'c':
-	    my_context.cname = optarg;
-	    break;
-
-	case 'C':
-	    my_context.target_cname = optarg;
-	    break;
-
-	case 'h':
-	    my_context.krb525d_host = optarg;
-	    break;
-
-	case 'i':
-	    my_context.source_cache_name = optarg;
-	    break;
-
-	case 'k':
-	    my_context.use_keytab = 1;
-	    break;
-
-	case 'o':
-	    my_context.target_cache_name = optarg;
-	    break;
-
-	case 'p':
-	    my_context.krb525d_port = atoi(optarg);
-	    if (my_context.krb525d_port == 0) {
-		fprintf(stderr, "Illegal port value \"%s\"\n", optarg);
-		arg_error++;
-	    }
-	    break;
-
-	case 's':
-	    my_context.sname = optarg;
-	    break;
-
-	case 'S':
-	    my_context.target_sname = optarg;
-	    break;
-
-	case 't':
-	    my_context.keytab_name = optarg;
-	    break;
-
-	case 'u':
-	    my_context.target_cache_owner = optarg;
-	    my_context.chown_target_cache = 1;
-	    break;
-
-	case 'U':
-	    my_context.dont_chown_target_cache = 1;
-	    break;
-
-	case 'v':
-	    my_context.verbose++;
-	    break;
-
-	case 'V':
-	    printf("%s Version %s\n", my_context.progname, KRB525_VERSION_STRING);
-	    exit(0);
-
-	default:
-	    arg_error = 1;
-	}
-
-    if ((argc - optind) != 0)
-	fprintf(stderr,
-		"%s: Ignoring extra command line options starting with %s\n",
-		my_context.progname, argv[optind]);
-
-    if (my_context.keytab_name && !my_context.use_keytab) {
-	fprintf(stderr,
-		"%s: Need to specify keytab (-k) to use keytab name (-t)\n",
-		my_context.progname);
-	arg_error = 1;
+    if (parse_commandline(&my_context,
+			  argc,
+			  argv)) {
+	/* Error message already printed */
+	error_exit();
     }
-
-    if (my_context.use_keytab && !my_context.cname) {
-	fprintf(stderr,
-		"%s: Need to specify client name (-c) when using keytab (-k)\n",
-		my_context.progname);
-	arg_error = 1;
-    }
-
-#ifdef AFS_KRB5
-    if (my_context.run_aklog && my_context.dont_run_aklog) {
-	fprintf(stderr,	"%s: Cannot specify both -a and -A\n",
-		my_context.progname);
-	arg_error = 1;
-    }
-#endif /* AFS_KRB5 */
-
-    if (arg_error) {
-	fprintf(stderr, "Usage: %s [<options>]\n"
-		" Options are:\n"
-#ifdef AFS_KRB5
-		"   -a                       Run aklog after acquiring new credentials\n"
-		"   -A                       Do not run aklog\n"
-#endif /* AFS_KRB5 */
-		"   -c <client name>         Client for credentials to convert\n"
-		"   -C <target client>       Client to convert to\n"
-		"   -h <server host>         Host where server is running\n"
-		"   -i <input cache>         Specify cache to get credentials from\n"
-		"   -k                       Use key from keytab to authenticate\n"
-		"   -o <output cache>        Cache to write credentials out to\n"
-		"   -p <server port>         Port where server is running\n"
-		"   -s <service name>        Service for credentials to convert\n"
-		"   -S <target service>      Service to convert to\n"
-		"   -t <keytab file>         Keytab file to use\n"
-		"   -u <username>            Specify owner of output cache\n"
-		"   -U                       Don't chown output cache\n"
-		"   -v                       Verbose mode\n"
-		"   -V                       Print version and exit\n",
-		my_context.progname);
-	exit(1);
-    }
-
 
     /* Kerberos initialization */
     if (my_context.verbose)
@@ -357,24 +248,11 @@ char *argv[];
 	my_context.cred_options |= DEFAULT_CACHE_TKT_OPTIONS;
 
     /*
-     * Get our cache ready for use if appropriate.
+     * Get our cache(s) ready for use
      */
-    if (!my_context.use_keytab) {
-	if (my_context.source_cache_name)
-	    retval = krb5_cc_resolve(my_context.krb5_context,
-				     my_context.source_cache_name,
-				     &my_context.source_ccache);
-	else
-	    retval = krb5_cc_default(my_context.krb5_context,
-				     &my_context.source_ccache);
-
-	if (retval) {
-	    com_err(my_context.progname, retval, "resolving source cache %s",
-		    (my_context.source_cache_name ?
-		     my_context.source_cache_name :
-		     "(default)"));
-	    error_exit();
-	}
+    if (setup_caches(&my_context)) {
+	/* Error message already printed */
+	error_exit();
     }
 
     /*
@@ -407,112 +285,11 @@ char *argv[];
     }
 
 
-    /*
-     * Parse our client name. If none was given then use default for
-     * our cache.
-     */
-    if (!my_context.use_keytab) {
-	if (retval = krb5_cc_get_principal(my_context.krb5_context,
-					   my_context.source_ccache,
-					   &my_context.cprinc)) {
-	    com_err(my_context.progname, retval,
-		    "while getting principal from cache");
-	    error_exit();
-	}
-    } else {
-	/* Client name must be provided with keytab. */
-	if (retval = krb5_parse_name(my_context.krb5_context, my_context.cname,
-				     &my_context.cprinc)) {
-	 com_err(my_context.progname, retval,
-		  "when parsing name %s", my_context.cname);
-	 error_exit();
-	}
-    }
- 	
-    if (retval = krb5_unparse_name(my_context.krb5_context, my_context.cprinc,
-				   &my_context.cname)) {
-	com_err (my_context.progname, retval, "when unparsing client");
+    if (setup_principals(&my_context)) {
+	/* Error message already printed */
 	error_exit();
     }
-
-    /*
-     * Parse service name. If none was given then use krbtgt/<realm>@<realm>
-     */
-    if (my_context.sname == NULL) {
-	if (retval = krb5_build_principal(my_context.krb5_context,
-					  &my_context.sprinc,
-					  my_context.default_realm.length,
-					  my_context.default_realm.data,
-					  KRB5_TGS_NAME,
-					  my_context.default_realm.data,
-					  0)) {
-	    com_err(my_context.progname, retval,
-		     "building default service principal");
-	    error_exit();
-	}
-    } else {
-	/* Service specified */
-	if (retval = krb5_parse_name(my_context.krb5_context, my_context.sname,
-				     &my_context.sprinc)) {
-	 com_err(my_context.progname, retval,
-		  "when parsing name %s", my_context.sname);
-	 error_exit();
-	}
-    }
-   
-    if (retval = krb5_unparse_name(my_context.krb5_context, my_context.sprinc,
-				   &my_context.sname)) {
-	 com_err(my_context.progname, retval, "when unparsing service");
-	 error_exit();
-    }
-
-    /*
-     * Parse our target client name. If none was given then use our
-     * original client name.
-     */
-    if (!my_context.target_cname)
-	my_context.target_cname = my_context.cname;
-
-    /* Client name must be provided with keytab. */
-    if (retval = krb5_parse_name(my_context.krb5_context,
-				 my_context.target_cname,
-				 &my_context.target_cprinc)) {
-	com_err(my_context.progname, retval,
-		 "when parsing name %s", my_context.target_cname);
-	error_exit();
-    }
- 	
-    if (retval = krb5_unparse_name(my_context.krb5_context,
-				   my_context.target_cprinc,
-				   &my_context.target_cname)) {
-	com_err (my_context.progname, retval, "when unparsing client");
-	error_exit();
-    }
-
-    /*
-     * Parse target service name. If none was given then use our original
-     * service.
-     */
-    if (my_context.target_sname == NULL)
-	my_context.target_sname = my_context.sname;
-
-    /* Service specified */
-    if (retval = krb5_parse_name(my_context.krb5_context,
-				 my_context.target_sname,
-				 &my_context.target_sprinc)) {
-	com_err(my_context.progname, retval,
-		 "when parsing name %s", my_context.target_sname);
-	error_exit();
-    }
-   
-    if (retval = krb5_unparse_name(my_context.krb5_context,
-				   my_context.target_sprinc,
-				   &my_context.target_sname)) {
-	com_err(my_context.progname, retval, "when unparsing service");
-	error_exit();
-    }
-
-
+ 
     if (my_context.verbose) {
 	printf("Ticket to convert is %s for %s\n",
 	       my_context.cname, my_context.sname);
@@ -534,78 +311,20 @@ char *argv[];
     }
 
     /*
-     * Figure out our target cache.
+     * Should we initialize the target cache?
      */
-    if (my_context.target_cache_name)
-	retval = krb5_cc_resolve(my_context.krb5_context,
-				 my_context.target_cache_name,
-				 &my_context.target_ccache);
-    else
-	retval = krb5_cc_default(my_context.krb5_context,
-				 &my_context.target_ccache);
-
-    if (retval) {
-	com_err(my_context.progname, retval, "resolving target cache %s",
-		(my_context.target_cache_name ?
-		 my_context.target_cache_name :
-		 "(default)"));
-	error_exit();
-    }
-
-    if (!my_context.target_cache_name) {
-	my_context.target_cache_name =
-	    krb5_cc_default_name(my_context.krb5_context);
-
-	if (strncmp(my_context.target_cache_name, "FILE:", 5) == 0)
-	    my_context.target_cache_name += 5;
-    }
+    my_context.initialize_cache = should_initialize_target_cache(&my_context);
 
     /*
-     * Get and parse client name to authenticate to krb525d with. If none
-     * specified then use our original client name.
+     * Figure out if we should chown the target credentials cache
      */
-    if (my_context.krb525_cname == NULL)
-	my_context.krb525_cname = my_context.cname;
 
-    if (retval = krb5_parse_name(my_context.krb5_context,
-				 my_context.krb525_cname,
-				 &my_context.krb525_cprinc)) {
-	com_err (my_context.progname, retval,
-		 "when parsing name %s", my_context.krb525_cname);
-	error_exit();
-    }
-
-    if (retval = krb5_unparse_name(my_context.krb5_context,
-				   my_context.krb525_cprinc,
-				   &my_context.krb525_cname)) {
-	com_err(my_context.progname, retval,
-		"when unparsing krb525 client principal");
-	error_exit();
-    }
+    my_context.chown_target_cache = should_chown_target_cache(&my_context);
 
     /*
-     * If we're root and a target owner for the target cache was not
-     * specified and we were not told to not chown the target cache,
-     * then we chown the cache to the uid of the target principal.
+     * Figure out uid and gid that we whould be chowning target cache to
      */
-    if ((geteuid() == 0) &&
-	!my_context.target_cache_owner &&
-	!my_context.dont_chown_target_cache) {
-
-	char *realm;
-
-	my_context.target_cache_owner = strdup(my_context.target_cname);
-
-	/* Remove realm */
-	if (realm = strchr(my_context.target_cache_owner, '@'))
-	    *realm = '\0';
-
-	if (my_context.verbose)
-	    printf("Since we're root we will try to chown the cache to %s\n",
-		   my_context.target_cache_owner);
-    }	
-
-    if (my_context.target_cache_owner) {	
+    if (my_context.chown_target_cache) {	
 	if (my_context.verbose)
 	    printf("Looking up uid and gid for %s for chowning cache\n",
 		   my_context.target_cache_owner);
@@ -620,22 +339,18 @@ char *argv[];
 	    error_exit();
 	}
     }
- 
+
+#ifdef AFS_KRB5
+    /* Should we run aklog? */
+    my_context.run_aklog = should_run_aklog(&my_context);
+#endif /* AFS_KRB5 */
+
     /* Get credentials to converted */
-    if (my_context.use_keytab)
-	retval = get_creds_with_keytab(my_context.krb5_context,
-				       my_context.cprinc,
-				       my_context.sprinc,
-				       my_context.cred_options,
-				       my_context.keytab_name,
-				       &my_context.creds);
-    else
-	retval = get_creds_with_ccache(my_context.krb5_context,
-				       my_context.cprinc,
-				       my_context.sprinc,
-				       my_context.cred_options,
-				       my_context.source_cache_name,
-				       &my_context.creds);
+    retval = get_creds(&my_context,
+		       my_context.cprinc,
+		       my_context.sprinc,
+		       my_context.cred_options,
+		       &my_context.creds);
 
     if (retval) {
 	/* Detailed error message already printed */
@@ -650,97 +365,11 @@ char *argv[];
 	error_exit();
     }
 
-    /*
-     * Parse service name to authenticate with. (Default is
-     * KRB525_SERVICE/<hostname>)
-     */
-    if (retval = krb5_sname_to_principal(my_context.krb5_context,
-					 my_context.krb525d_host,
-					 my_context.krb525_sname,
-					 KRB5_NT_SRV_HST,
-					 &my_context.krb525_sprinc)) {
-	com_err(my_context.progname, retval,
-		"while creating server name for %s/%s",
-		my_context.krb525_sname, my_context.krb525d_host);
+    /* And authenticate */
+    if (authenticate_to_krb525d(&my_context)) {
+	/* Error message already printed */
 	error_exit();
     }
-
-    if (retval = krb5_unparse_name(my_context.krb5_context,
-				   my_context.krb525_sprinc,
-				   &my_context.krb525_sname)) {
-	com_err(my_context.progname, retval,
-		"when unparsing krb525 service principal");
-	error_exit();
-    }
-
-    /* Get our credentials for krb525d */
-    if (my_context.verbose)
-	printf("Getting credentials for krb525d (%s for %s)\n",
-	       my_context.krb525_cname, my_context.krb525_sname);
-
-    if (my_context.use_keytab)
-	retval = get_creds_with_keytab(my_context.krb5_context,
-				       my_context.krb525_cprinc,
-				       my_context.krb525_sprinc,
-				       my_context.krb525_tkt_options,
-				       my_context.keytab_name,
-				       &my_context.krb525_creds);
-    else
-	retval = get_creds_with_ccache(my_context.krb5_context,
-				       my_context.krb525_cprinc,
-				       my_context.krb525_sprinc,
-				       my_context.krb525_tkt_options,
-				       my_context.source_cache_name,
-				       &my_context.krb525_creds);
-
-    if (retval) {
-	/* Detailed error message already printed */
-	fprintf(stderr, "Couldn't get ticket - %s for %s\n",
-		 my_context.krb525_cname, my_context.krb525_sname);
-	error_exit();
-    }
-    
-    /* Authenticate to server */
-    if (my_context.verbose)
-	printf("Authenticating...\n");
-
-    /*
-     * I have no idea what the cksum_data stuff is for or why it uses
-     * the hostname of the server.
-     */
-    cksum_data.data = my_context.krb525d_host;
-    cksum_data.length = strlen(my_context.krb525d_host);
-
-    retval = krb5_sendauth(my_context.krb5_context,
-			   &my_context.auth_context,
-			   (krb5_pointer) &my_context.krb525d_sock,
-			   KRB525_VERSION,
-			   my_context.krb525_cprinc,	/* Not needed */
-			   my_context.krb525_sprinc,	/* Not needed */
-			   AP_OPTS_MUTUAL_REQUIRED,
-			   &cksum_data,
-			   &my_context.krb525_creds,
-			   NULL, &err_ret, &rep_ret, NULL);
-
-    if (retval && retval != KRB5_SENDAUTH_REJECTED) {
-	com_err(my_context.progname, retval, "while using sendauth");
-	error_exit();
-    }
-
-    if (retval == KRB5_SENDAUTH_REJECTED) {
-	/* got an error */
-	printf("sendauth rejected, error reply is:\n\t\"%*s\"\n",
-	       err_ret->text.length, err_ret->text.data);
-	error_exit();
-    }
-
-    if (rep_ret == NULL) {
-	com_err(my_context.progname, 0, "no error or reply from sendauth!");
-	error_exit();
-    }
-
-    if (my_context.verbose)
-	printf("sendauth succeeded\n");
 
     /* Prepare to encrypt */
     if (retval = setup_auth_context(my_context.krb5_context,
@@ -800,6 +429,9 @@ char *argv[];
     switch(resp_status) {
     case STATUS_OK:
 	/* Read new ticket from server */
+	if (my_context.verbose)
+	    printf("Reading converted ticket from server\n");
+
 	if ((retval = read_encrypt(my_context.krb5_context,
 				   my_context.auth_context,
 				   my_context.krb525d_sock,
@@ -809,51 +441,9 @@ char *argv[];
 	    error_exit();
 	}
 
-	if (my_context.verbose)
-	    printf("New ticket read from server. Storing in %s\n",
-		   my_context.target_cache_name);
-
-	/* Put new ticket data into credentials */
-	my_context.creds.ticket.data = recv_data.data;
-	my_context.creds.ticket.length = recv_data.length;
-
-	/* Massage other fields of credentials */
-	/* XXX Should copy everything from ticket */
-	my_context.creds.client = my_context.target_cprinc;
-	my_context.creds.server = my_context.target_sprinc;
-
-	/* Ok now store the ticket */
-
-	/*
-	 * Decide if we initialize the cache. If we came from a keytab or
-	 * we changed clients, or the target cache != source cache then
-	 * initialize the cache.
-	 *
-	 * XXX - Not 100% sure this is right.
-	 */
-	if (my_context.use_keytab ||
-	    strcmp(my_context.cname, my_context.target_cname) ||
-	    !my_context.source_cache_name ||
-	    (my_context.source_cache_name && 
-	     strcmp(my_context.source_cache_name, my_context.target_cache_name)))
-	    my_context.initialize_cache = 1;
-
-	if (my_context.initialize_cache) {
-	    if (my_context.verbose)
-		printf("Initializing cache\n");
-
-	    if (retval = krb5_cc_initialize(my_context.krb5_context,
-					    my_context.target_ccache,
-					    my_context.target_cprinc)) {
-		com_err(my_context.progname, retval, "initializing cache");
-		error_exit();
-	    }
-	}
-
-	if (retval = krb5_cc_store_cred(my_context.krb5_context,
-					my_context.target_ccache,
-					&my_context.creds)) {
-	    com_err(my_context.progname, retval, "storing credentials");
+	if (store_converted_ticket(&my_context,
+				   &recv_data)) {
+	    /* Error message already printed */
 	    error_exit();
 	}
 
@@ -874,44 +464,8 @@ char *argv[];
 	}
 
 #ifdef AFS_KRB5	
-	/*
-	 * If we weren't explicitly told not to run or not to run
-	 * aklog then check the configuration file.
-	 */
-	if (!my_context.run_aklog && !my_context.dont_run_aklog)
-	    krb5_appdefault_boolean(my_context.krb5_context,
-				    my_context.progname,
-				    &my_context.default_realm,
-				    "krb5_run_aklog", 0,
-				    (int *) &my_context.run_aklog);
-
-	if (my_context.run_aklog) {
-	    char *aklog_path;
-	    struct stat st;
-
-	    krb5_appdefault_string(my_context.krb5_context,
-				   my_context.progname,
-				   &my_context.default_realm,
-				   "krb5_aklog_path",
-				   INSTALLPATH "bin/aklog",
-				   &aklog_path);
-
-	    /*
-	     * Make sure it exists before we try to run it
-	     */
-	    if (stat(aklog_path, &st) == 0) {
-		if (my_context.verbose)
-		    printf("Running %s\n", aklog_path);
-
-		system(aklog_path);
-	    } else {
-		if (my_context.verbose)
-		    printf("Can't run aklog: %s doesn't exist",
-			   aklog_path);
-	    }
-
-	    free(aklog_path);
-	}	
+	if (my_context.run_aklog)
+	    run_aklog(&my_context);
 #endif /* AFS_KRB5 */
 
 	break;
@@ -939,10 +493,235 @@ cleanup:
     if (my_context.krb525d_sock > 0)
 	close(my_context.krb525d_sock);
 
+    if (my_context.verbose)
+	printf("Done\n");
+
+    /* XXX Need to cleanup exit code */
     exit(resp_status);
 }
 
 
+/*
+ * Parse commandline options
+ *
+ * Returns non-zero on error.
+ */
+static int
+parse_commandline(krb525_client_context *my_context,
+		  int			argc,
+		  char			*argv[])
+{
+    int					arg;
+    int					arg_error = 0;
+    char				*options_string;
+
+
+    options_string = "aAc:C:g:h:i:knNo:p:s:S:t:u:UvV";
+
+    /* Get our name, removing preceding path */
+    if (my_context->progname = strrchr(argv[0], '/'))
+	my_context->progname++;
+    else
+	my_context->progname = argv[0];
+
+    /* Process arguments */
+    while ((arg = getopt(argc, argv, options_string)) != EOF)
+	switch (arg) {
+	case 'a':
+#ifdef AFS_KRB5
+	    my_context->run_aklog = 1;
+#else
+	    fprintf(stderr, "%s: -a option not supported\n", progname);
+	    arg_error++;
+#endif
+	    break;
+
+	case 'A':
+#ifdef AFS_KRB5
+	    my_context->dont_run_aklog = 1;
+#else
+	    fprintf(stderr, "%s: ignoring -A, not supported\n", progname);
+#endif
+	    break;
+
+
+	case 'c':
+	    my_context->cname = optarg;
+	    break;
+
+	case 'C':
+	    my_context->target_cname = optarg;
+	    break;
+
+	case 'h':
+	    my_context->krb525d_host = optarg;
+	    break;
+
+	case 'i':
+	    my_context->source_cache_name = optarg;
+	    break;
+
+	case 'k':
+	    my_context->use_keytab = 1;
+	    break;
+
+	case 'n':
+	    my_context->initialize_cache = 1;
+	    break;
+
+	case 'N':
+	    my_context->dont_initialize_cache = 1;
+	    break;
+
+	case 'o':
+	    my_context->target_cache_name = optarg;
+	    break;
+
+	case 'p':
+	    my_context->krb525d_port = atoi(optarg);
+	    if (my_context->krb525d_port == 0) {
+		fprintf(stderr, "Illegal port value \"%s\"\n", optarg);
+		arg_error++;
+	    }
+	    break;
+
+	case 's':
+	    my_context->sname = optarg;
+	    break;
+
+	case 'S':
+	    my_context->target_sname = optarg;
+	    break;
+
+	case 't':
+	    my_context->keytab_name = optarg;
+	    break;
+
+	case 'u':
+	    my_context->target_cache_owner = optarg;
+	    my_context->chown_target_cache = 1;
+	    break;
+
+	case 'U':
+	    my_context->dont_chown_target_cache = 1;
+	    break;
+
+	case 'v':
+	    my_context->verbose++;
+	    break;
+
+	case 'V':
+	    printf("%s Version %s\n", my_context->progname, KRB525_VERSION_STRING);
+	    exit(0);
+
+	default:
+	    arg_error = 1;
+	}
+
+    if ((argc - optind) != 0)
+	fprintf(stderr,
+		"%s: Ignoring extra command line options starting with %s\n",
+		my_context->progname, argv[optind]);
+
+    if (my_context->keytab_name && !my_context->use_keytab) {
+	fprintf(stderr,
+		"%s: Need to specify keytab (-k) to use keytab name (-t)\n",
+		my_context->progname);
+	arg_error = 1;
+    }
+
+    if (my_context->use_keytab && !my_context->cname) {
+	fprintf(stderr,
+		"%s: Need to specify client name (-c) when using keytab (-k)\n",
+		my_context->progname);
+	arg_error = 1;
+    }
+
+    if (my_context->initialize_cache && my_context->dont_initialize_cache) {
+	fprintf(stderr, "%s: Connect specify both -n and -N\n",
+		my_context->progname);
+	arg_error = 1;
+    }
+    
+    if (my_context->chown_target_cache && my_context->dont_chown_target_cache) {
+	fprintf(stderr, "%s: Connect specify both -u and -U\n",
+		my_context->progname);
+	arg_error = 1;
+    }
+
+#ifdef AFS_KRB5
+    if (my_context->run_aklog && my_context->dont_run_aklog) {
+	fprintf(stderr,	"%s: Cannot specify both -a and -A\n",
+		my_context->progname);
+	arg_error = 1;
+    }
+#endif /* AFS_KRB5 */
+
+    if (arg_error) {
+	fprintf(stderr, "Usage: %s [<options>]\n"
+		" Options are:\n"
+#ifdef AFS_KRB5
+		"   -a                       Run aklog after acquiring new credentials\n"
+		"   -A                       Do not run aklog\n"
+#endif /* AFS_KRB5 */
+		"   -c <client name>         Client for credentials to convert\n"
+		"   -C <target client>       Client to convert to\n"
+		"   -h <server host>         Host where server is running\n"
+		"   -i <input cache>         Specify cache to get credentials from\n"
+		"   -k                       Use key from keytab to authenticate\n"
+		"   -n                       Initialize target cache\n"
+		"   -N                       Don't initialize target cache\n"
+		"   -o <output cache>        Cache to write credentials out to\n"
+		"   -p <server port>         Port where server is running\n"
+		"   -s <service name>        Service for credentials to convert\n"
+		"   -S <target service>      Service to convert to\n"
+		"   -t <keytab file>         Keytab file to use\n"
+		"   -u <username>            Specify owner of output cache\n"
+		"   -U                       Don't chown output cache\n"
+		"   -v                       Verbose mode\n"
+		"   -V                       Print version and exit\n",
+		my_context->progname);
+    }
+
+    return arg_error;
+}
+
+
+
+/*
+ * Get credentials using keytab or cache as indicated
+ *
+ * Returns non-zero on error.
+ */
+static krb5_error_code
+get_creds(krb525_client_context *my_context,
+	  krb5_principal	client,
+	  krb5_principal	server,
+	  krb5_flags		options,
+	  krb5_creds		*creds)
+{
+    krb5_error_code		retval;
+
+
+    if (my_context->use_keytab)
+	retval = get_creds_with_keytab(my_context->krb5_context,
+				       client,
+				       server,
+				       options,
+				       my_context->keytab_name,
+				       creds);
+    else
+	retval = get_creds_with_ccache(my_context->krb5_context,
+				       client,
+				       server,
+				       options,
+				       my_context->source_cache_name,
+				       creds);
+
+    return retval;
+}
+
+	
 
 /*
  * Fill in the structure pointed to by creds with credentials with
@@ -1168,3 +947,609 @@ connect_to_krb525d(krb525_client_context *my_context)
     return status;
 }
 
+
+
+/*
+ * Resolve input and output caches
+ *
+ * Returns non-zero on error
+ */
+static krb5_error_code
+setup_caches(krb525_client_context *my_context)
+{
+    krb5_error_code		retval = 0;
+
+
+    /* Input cache, if we're not using a keytab */
+    if (!my_context->use_keytab) {
+	if (my_context->source_cache_name)
+	    retval = krb5_cc_resolve(my_context->krb5_context,
+				     my_context->source_cache_name,
+				     &my_context->source_ccache);
+	else
+	    retval = krb5_cc_default(my_context->krb5_context,
+				     &my_context->source_ccache);
+
+	if (retval) {
+	    com_err(my_context->progname, retval, "resolving source cache %s",
+		    (my_context->source_cache_name ?
+		     my_context->source_cache_name :
+		     "(default)"));
+	    goto cleanup;
+	}
+
+	if (!my_context->source_cache_name) {
+	    my_context->source_cache_name =
+		krb5_cc_default_name(my_context->krb5_context);
+	}
+    }
+
+    /* Output cache */
+    if (my_context->target_cache_name)
+	retval = krb5_cc_resolve(my_context->krb5_context,
+				 my_context->target_cache_name,
+				 &my_context->target_ccache);
+    else
+	retval = krb5_cc_default(my_context->krb5_context,
+				 &my_context->target_ccache);
+
+    if (retval) {
+	com_err(my_context->progname, retval, "resolving target cache %s",
+		(my_context->target_cache_name ?
+		 my_context->target_cache_name :
+		 "(default)"));
+	goto cleanup;
+    }
+
+    if (!my_context->target_cache_name) {
+	my_context->target_cache_name =
+	    krb5_cc_default_name(my_context->krb5_context);
+    }
+
+ cleanup:
+    return retval;
+}
+
+
+
+/*
+ * Parse the principal names for the credentials.
+ * Must be called after caches are setup.
+ *
+ * Returns non-zero on error
+ */
+static krb5_error_code
+setup_principals(krb525_client_context *my_context)
+{
+    krb5_error_code		retval;
+
+
+   /*
+    * Parse our client name.
+    */
+    if (!my_context->use_keytab) {
+	/* If we are using a cache, then that is our client name */
+	if (retval = krb5_cc_get_principal(my_context->krb5_context,
+					   my_context->source_ccache,
+					   &my_context->cprinc)) {
+	    com_err(my_context->progname, retval,
+		    "while getting principal from cache");
+	    goto cleanup;
+	}
+    } else {
+	/* Client name must be provided with keytab. */
+	if (retval = krb5_parse_name(my_context->krb5_context,
+				     my_context->cname,
+				     &my_context->cprinc)) {
+	 com_err(my_context->progname, retval,
+		  "when parsing name %s", my_context->cname);
+	 goto cleanup;
+	}
+    }
+ 	
+    if (retval = krb5_unparse_name(my_context->krb5_context, my_context->cprinc,
+				   &my_context->cname)) {
+	com_err (my_context->progname, retval, "when unparsing client");
+	goto cleanup;
+    }
+
+   /*
+     * Parse service name. If none was given then use krbtgt/<realm>@<realm>
+     */
+    if (my_context->sname == NULL) {
+	if (retval = krb5_build_principal(my_context->krb5_context,
+					  &my_context->sprinc,
+					  my_context->default_realm.length,
+					  my_context->default_realm.data,
+					  KRB5_TGS_NAME,
+					  my_context->default_realm.data,
+					  0)) {
+	    com_err(my_context->progname, retval,
+		     "building default service principal");
+	    goto cleanup;
+	}
+    } else {
+	/* Service specified */
+	if (retval = krb5_parse_name(my_context->krb5_context, my_context->sname,
+				     &my_context->sprinc)) {
+	 com_err(my_context->progname, retval,
+		  "when parsing name %s", my_context->sname);
+	 goto cleanup;
+	}
+    }
+   
+    if (retval = krb5_unparse_name(my_context->krb5_context, my_context->sprinc,
+				   &my_context->sname)) {
+	 com_err(my_context->progname, retval, "when unparsing service");
+	 goto cleanup;
+    }
+
+    /*
+     * Parse our target client name. If none was given then use our
+     * original client name.
+     */
+    if (!my_context->target_cname)
+	my_context->target_cname = my_context->cname;
+
+    /* Client name must be provided with keytab. */
+    if (retval = krb5_parse_name(my_context->krb5_context,
+				 my_context->target_cname,
+				 &my_context->target_cprinc)) {
+	com_err(my_context->progname, retval,
+		 "when parsing name %s", my_context->target_cname);
+	goto cleanup;
+    }
+ 	
+    if (retval = krb5_unparse_name(my_context->krb5_context,
+				   my_context->target_cprinc,
+				   &my_context->target_cname)) {
+	com_err (my_context->progname, retval, "when unparsing client");
+	goto cleanup;
+    }
+
+    /*
+     * Parse target service name. If none was given then use our original
+     * service.
+     */
+    if (my_context->target_sname == NULL)
+	my_context->target_sname = my_context->sname;
+
+    /* Service specified */
+    if (retval = krb5_parse_name(my_context->krb5_context,
+				 my_context->target_sname,
+				 &my_context->target_sprinc)) {
+	com_err(my_context->progname, retval,
+		 "when parsing name %s", my_context->target_sname);
+	goto cleanup;
+    }
+   
+    if (retval = krb5_unparse_name(my_context->krb5_context,
+				   my_context->target_sprinc,
+				   &my_context->target_sname)) {
+	com_err(my_context->progname, retval, "when unparsing service");
+	goto cleanup;
+    }
+
+ cleanup:
+    return retval;
+}
+
+
+
+/*
+ * Authenticate to krb525d
+ *
+ * Returns non-zero on error
+ */
+static krb5_error_code
+authenticate_to_krb525d(krb525_client_context *my_context)
+{
+    krb5_error_code		retval;
+    krb5_data			cksum_data;
+    krb5_error			*err_ret;
+    krb5_ap_rep_enc_part	*rep_ret;
+
+
+    /*
+     * Get and parse client name to authenticate to krb525d with. If none
+     * specified then use our original client name.
+     */
+    if (my_context->krb525_cname == NULL)
+	my_context->krb525_cname = my_context->cname;
+
+    if (retval = krb5_parse_name(my_context->krb5_context,
+				 my_context->krb525_cname,
+				 &my_context->krb525_cprinc)) {
+	com_err (my_context->progname, retval,
+		 "when parsing name %s", my_context->krb525_cname);
+	goto cleanup;
+    }
+
+    if (retval = krb5_unparse_name(my_context->krb5_context,
+				   my_context->krb525_cprinc,
+				   &my_context->krb525_cname)) {
+	com_err(my_context->progname, retval,
+		"when unparsing krb525 client principal");
+	goto cleanup;
+    }
+
+    /*
+     * Parse service name to authenticate with. (Default is
+     * KRB525_SERVICE/<hostname>)
+     */
+    if (retval = krb5_sname_to_principal(my_context->krb5_context,
+					 my_context->krb525d_host,
+					 my_context->krb525_sname,
+					 KRB5_NT_SRV_HST,
+					 &my_context->krb525_sprinc)) {
+	com_err(my_context->progname, retval,
+		"while creating server name for %s/%s",
+		my_context->krb525_sname, my_context->krb525d_host);
+	goto cleanup;
+    }
+
+    if (retval = krb5_unparse_name(my_context->krb5_context,
+				   my_context->krb525_sprinc,
+				   &my_context->krb525_sname)) {
+	com_err(my_context->progname, retval,
+		"when unparsing krb525 service principal");
+	goto cleanup;
+    }
+
+
+
+    /* Get our credentials for krb525d */
+    if (my_context->verbose)
+	printf("Getting credentials for krb525d (%s for %s)\n",
+	       my_context->krb525_cname, my_context->krb525_sname);
+
+    retval = get_creds(my_context,
+		       my_context->krb525_cprinc,
+		       my_context->krb525_sprinc,
+		       my_context->krb525_tkt_options,
+		       &my_context->krb525_creds);
+
+    if (retval) {
+	/* Detailed error message already printed */
+	fprintf(stderr, "Couldn't get ticket - %s for %s\n",
+		 my_context->krb525_cname, my_context->krb525_sname);
+	goto cleanup;
+    }
+    
+    /* Authenticate to server */
+    if (my_context->verbose)
+	printf("Authenticating...\n");
+
+    /*
+     * I have no idea what the cksum_data stuff is for or why it uses
+     * the hostname of the server.
+     */
+    cksum_data.data = my_context->krb525d_host;
+    cksum_data.length = strlen(my_context->krb525d_host);
+
+    retval = krb5_sendauth(my_context->krb5_context,
+			   &my_context->auth_context,
+			   (krb5_pointer) &my_context->krb525d_sock,
+			   KRB525_VERSION,
+			   my_context->krb525_cprinc,	/* Not needed */
+			   my_context->krb525_sprinc,	/* Not needed */
+			   AP_OPTS_MUTUAL_REQUIRED,
+			   &cksum_data,
+			   &my_context->krb525_creds,
+			   NULL, &err_ret, &rep_ret, NULL);
+
+    if (retval && retval != KRB5_SENDAUTH_REJECTED) {
+	com_err(my_context->progname, retval, "while using sendauth");
+	goto cleanup;
+    }
+
+    if (retval == KRB5_SENDAUTH_REJECTED) {
+	/* got an error */
+	printf("sendauth rejected, error reply is:\n\t\"%*s\"\n",
+	       err_ret->text.length, err_ret->text.data);
+	goto cleanup;
+    }
+
+    if (rep_ret == NULL) {
+	com_err(my_context->progname, 0, "no error or reply from sendauth!");
+	goto cleanup;
+    }
+
+    if (my_context->verbose)
+	printf("sendauth succeeded\n");
+
+ cleanup:
+    return retval;
+}
+
+
+
+/*
+ * Store the converted ticket in the target cache.
+ *
+ * Returns non-zero on error.
+ */
+static krb5_error_code
+store_converted_ticket(krb525_client_context *my_context,
+		       krb5_data *converted_ticket)
+{
+    krb5_error_code retval;
+
+
+    /* Put new ticket data into credentials */
+    my_context->creds.ticket.data = converted_ticket->data;
+    my_context->creds.ticket.length = converted_ticket->length;
+
+    /* Massage other fields of credentials to match converted ticket */
+    my_context->creds.client = my_context->target_cprinc;
+    my_context->creds.server = my_context->target_sprinc;
+
+    if (my_context->verbose)
+	printf("Storing converted ticket in %s\n",
+	       my_context->target_cache_name);
+
+    /*
+     * If we're not initializing the cache, then make sure the cache
+     * exists and doesn't already contain a matching existing credential.
+     */
+    if (!my_context->initialize_cache) {
+	krb5_flags		retrieve_flags = 0;
+	krb5_creds		found_creds;
+
+	/*
+	 * If cache already contains this credential, remove it first.
+	 */
+	retval = krb5_cc_retrieve_cred(my_context->krb5_context,
+				       my_context->target_ccache,
+				       retrieve_flags,
+				       &my_context->creds,
+				       &found_creds);
+
+	switch(retval) {
+	case KRB5_FCC_NOFILE:
+	    /* No cache */
+	    if (my_context->verbose)
+		printf("Target cache %s doesn't exist - will initialize\n",
+		       my_context->target_cache_name);
+
+	    my_context->initialize_cache = 1;
+	    break;
+
+	case KRB5_CC_NOTFOUND:
+	    /* No match found */
+	    break;
+
+	case 0:
+	    /* Match found */
+	    krb5_free_cred_contents(my_context->krb5_context, &found_creds);
+
+	    /*
+	     * It would be nice to delete the existing cred here, but
+	     * krb5_cc_remove_cred() is not implemented (for FILE at
+	     * least).
+	     */
+	    com_err(my_context->progname, 0,
+		    "Target cache %s already has matching credential.",
+		       my_context->target_cache_name);
+
+	    retval = -1;
+
+	    goto cleanup;
+
+	default:
+	    /* Some other error */
+	    com_err(my_context->progname, retval,
+		    "Reading credentials cache %s",
+		    my_context->target_cache_name);
+	    goto cleanup;
+	}
+    }
+
+    /* Initialize cache if requested */
+    if (my_context->initialize_cache) {
+	if (my_context->verbose)
+	    printf("Initializing cache %s\n",
+		   my_context->target_cache_name);
+	
+	if (retval = krb5_cc_initialize(my_context->krb5_context,
+					my_context->target_ccache,
+					my_context->target_cprinc)) {
+	    com_err(my_context->progname, retval, "initializing cache");
+	    goto cleanup;
+	}
+    }
+
+    if (my_context->verbose)
+	printf("Storing credentials to %s\n",
+	       my_context->target_cache_name);
+
+    if (retval = krb5_cc_store_cred(my_context->krb5_context,
+				    my_context->target_ccache,
+				    &my_context->creds)) {
+	com_err(my_context->progname, retval, "storing credentials");
+	goto cleanup;
+    }
+
+ cleanup:
+    return retval;
+}
+
+
+/*
+ * Should we initialize the target credentials cache?
+ */
+static krb5_boolean
+should_initialize_target_cache(krb525_client_context *my_context)
+{
+    /*
+     * Did user request one way or the other?
+     */
+    if (my_context->dont_initialize_cache)
+	return 0;
+
+    if (my_context->initialize_cache)
+	return 1;
+
+    /*
+     * If we are coming from a keytab, then yes
+     */
+    if (my_context->use_keytab) {
+	if (my_context->verbose)
+	    printf("Will initialze cache because we are using keytab\n");
+
+	return 1;
+    }
+
+    /*
+     * If the target ticket is tgt then yes
+     */
+    if (is_tgt(my_context, my_context->target_sprinc)) {
+	if (my_context->verbose)
+	    printf("Will initialze cache because target service is tgt\n");
+
+	return 1;
+    }
+
+    /*
+     * Else, return no
+     */
+    return 0;
+}
+
+
+
+/*
+ * Should we chown the target credientials cache?
+ */
+static krb5_boolean
+should_chown_target_cache(krb525_client_context *my_context)
+{
+    /*
+     * Did the user request one way or another?
+     */
+    if (my_context->dont_chown_target_cache)
+	return 0;
+
+    if (my_context->chown_target_cache)
+	return 1;
+
+    /*
+     * Else, return no
+     */
+    return 0;
+}
+
+
+
+/*
+ * Is the given principal a TGT?
+ */
+static krb5_boolean
+is_tgt(krb525_client_context *my_context,
+       krb5_principal princ)
+{
+    krb5_data *component;
+
+    component = krb5_princ_component(my_context->krb5_context, princ, 0);
+
+    return (strcmp(KRB5_TGS_NAME, component->data) == 0);
+}
+
+
+
+#ifdef AFS_KRB5
+/*
+ * Should we run aklog?
+ */
+static krb5_boolean
+should_run_aklog(krb525_client_context *my_context)
+{
+    /*
+     * Did the user request one way or another?
+     */
+    if (my_context->dont_run_aklog)
+	return 0;
+
+    if (my_context->run_aklog)
+	return 1;
+    
+    /*
+     * Check with appdefaults, if they say no then no
+     */
+    krb5_appdefault_boolean(my_context->krb5_context,
+			    my_context->progname,
+			    &my_context->default_realm,
+			    "krb5_run_aklog", 0,
+			    (int *) &my_context->run_aklog);
+
+    if (!my_context->run_aklog)
+	return 0;
+
+    /*
+     * Make sure the target ticket makes sense. It should be either
+     * a ticket-granting ticket or an afs service ticket.
+     */
+    if (is_tgt(my_context, my_context->target_sprinc))
+	return 1;
+
+    if (is_afs_service(my_context, my_context->target_sprinc))
+	return 1;
+
+    /*
+     * Else, return no
+     */
+    return 0;
+}
+
+
+/*
+ * Is given principal an afs service principal?
+ */
+static krb5_boolean
+is_afs_service(krb525_client_context *my_context,
+       krb5_principal princ)
+{
+    krb5_data *component;
+
+    component = krb5_princ_component(my_context->krb5_context, princ, 0);
+
+    return (strcmp("afs", component->data) == 0);
+}
+
+
+/*
+ * Run aklog
+ */
+static void
+run_aklog(krb525_client_context *my_context)
+{
+    char			*aklog_path;
+    struct stat			st;
+
+
+    /* Determine aklog's path */
+    krb5_appdefault_string(my_context->krb5_context,
+			   my_context->progname,
+			   &my_context->default_realm,
+			   "krb5_aklog_path",
+			   INSTALLPATH "bin/aklog",
+			   &aklog_path);
+
+    /*
+     * Make sure it exists before we try to run it
+     */
+    if (stat(aklog_path, &st) == 0) {
+	if (my_context->verbose)
+	    printf("Running %s\n", aklog_path);
+
+	system(aklog_path);
+    } else {
+	if (my_context->verbose)
+	    printf("Can't run aklog: %s doesn't exist",
+		   aklog_path);
+    }	
+
+    free(aklog_path);
+}
+
+#endif /* AFS_KRB5 */

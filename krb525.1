@@ -1,7 +1,7 @@
 .\" 
 .\" krb525 man page
 .\"
-.\" $Id: krb525.1,v 1.4 1999/11/02 14:58:16 vwelch Exp $
+.\" $Id: krb525.1,v 1.5 1999/11/02 21:48:13 vwelch Exp $
 .\"
 .TH KRB525 1
 .SH NAME
@@ -31,10 +31,11 @@ and
 has three intended uses. The first is to allow users who are coming in
 from anothr realm to get tickets for their principals in the local
 realm so that the can access services that don't respect the Kerberos 5
-.k5login file. The second use is for a Kerberos-su utility that allows
-authorized users to get tickets for other clients as needed. The third
-is to allow users to acquire Kerberos credentials after they have
-been authenticated by some other means besides Kerberos.
+authorization file (.k5login or .k5users). The second use is for a
+Kerberos-su utility that allows authorized users to get tickets for
+other clients as needed. The third is to allow users to acquire
+Kerberos credentials after they have been authenticated by some other
+means besides Kerberos.
 .PP
 krb525 does this conversion by sending the encrypted ticket over to a
 daemon, krb525d(8), via an encrypted channel. The daemon either must
@@ -84,6 +85,14 @@ By default it will be the current user's default cache.
 specifies that the initial credentials should be obtained using the
 keytab file. This requires that the \fB\-c\fP option be specifies to
 indicate the client principal name.
+.TP
+.B \-n
+specified that krb525 should initialize the target cache. Normally
+it is only initialized if needed or the ticket being written is
+a ticket-granting-ticket.
+.TP
+.B \-N
+specified that krb525 should not initialize the target cache.
 .TP
 \fB\-o\fP \fIoutput_cache\fP
 specifies that the resulting credentials be stored in
@@ -204,7 +213,11 @@ If your Kerberos 5 installation has the AFS-KRB5 migration kit
 installed and krb525 was built to take advantage of this, then krb525
 can run the  
 .I aklog
-program after converting the ticket.
+program after converting the ticket. krb525 check both if running
+aklog is desired and if the ticket is an appropriate ticket
+(a ticket-granting-ticket or afs service ticket).
+.PP
+To detemine if running of aklog is desired
 .I krb525
 will look in the krb5.conf(5) file for a entry like the following:
 .nf
@@ -225,7 +238,7 @@ and
 .B \-A
 can override the krb5_run_aklog value in krb5.conf. If
 .B \-a
-is specified, krb525 will always try to run aklog. If
+is specified, krb525 will try to run aklog if appropriate. If
 .B \-A
 is specified then krb525 will not try to run aklog.
 .PP
