@@ -4,7 +4,7 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.7 1999/10/08 21:37:58 vwelch Exp $
+ * $Id: srv_conf.c,v 1.8 1999/10/08 21:52:11 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -404,7 +404,7 @@ check_conf(krb525_request *request)
 	    }
 
 	    if (find_princ_in_regex_values(request->krb5_context,
-					   request->target_client,
+					   request->target_server,
 					   entry) == NULL) {
 		sprintf(srv_conf_error, "Target server not allowed");
 		goto done;
