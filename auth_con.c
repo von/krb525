@@ -3,7 +3,7 @@
  *
  * Functions dealing with Kerberos auth_context.
  *
- * $Id: auth_con.c,v 1.2 1997/09/25 19:28:41 vwelch Exp $
+ * $Id: auth_con.c,v 1.3 1997/10/17 19:32:36 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -64,7 +64,7 @@ setup_auth_context(krb5_context context,
     /* Set up replay cache */ 
     if ((retval = krb5_gen_portaddr(context,
 				    &laddr,
-				    (krb5_pointer) &(localaddr->sin_addr),
+				    (krb5_pointer) &(localaddr->sin_port),
 				    &portlocal_addr))) {
 	sprintf(auth_con_error, "%s while generating port address",
 		error_message(retval));

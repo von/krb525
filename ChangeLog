@@ -1,3 +1,9 @@
+Fri Oct 17 14:30:23 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
+
+	* auth_con.c (setup_auth_context): Use sin_port and not sin_addr
+	in call to krb5_gen_portaddr(). This keeps us from having cache
+	conflicts when krb525 and krb525d are running on the same machine.
+
 Tue Oct  7 09:43:39 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
 
 	* client.c (get_creds_with_keytab, get_creds_with_ccache): 
