@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.9 1999/10/08 19:49:25 vwelch Exp $
+ * $Id: server.c,v 1.10 1999/10/11 15:49:48 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -183,7 +183,7 @@ main(argc, argv)
 #endif
                 "   -p <port>                Port to listen on\n"
                 "   -s <service name>        My service name\n"
-		"   -t <keytab name>         Keytab to use\n",
+		"   -t <keytab name>         Keytab to use\n"
 		"   -V                       Print version and exit\n",
 		progname);
 	syslog(LOG_ERR, "Exiting with argument error");
@@ -1003,7 +1003,7 @@ done:
      return return_code;
 }
 
-#endif /* K5_DB_CODE;
+#endif /* K5_DB_CODE */
 
 /*
  * Check and validate a request using keytab information.
