@@ -161,6 +161,10 @@ echo "Check default disallowed_target_servers:"
 should_fail $check_conf -c ben@FOO.EDU -s krbtgt/FOO.EDU@FOO.EDU -S afs@FOO.EDU $test_conf
 
 echo ""
+echo "Checking multi-component client:"
+should_succeed $check_conf -c krb525/somehost.foo.edu@FOO.EDU -C bob@FOO.EDU -S host/somehost.foo.edu@FOO.EDU $test_conf
+
+echo ""
 echo "SUCCESS"
 echo ""
 exit 0

@@ -10,6 +10,7 @@ allowed_clients =
 	mary@BAR.EDU
 	sally@BAR.EDU
 	john@BAR.EDU
+	krb525/somehost.foo.edu@FOO.EDU
 	;
 
 disallowed_clients =
@@ -33,6 +34,11 @@ john@BAR.EDU = {
 	disallowed_target_clients = fred/tapeadmin@BAR.EDU ;
 	target_servers = host/*@BAR.EDU ;
 	disallowed_target_servers = host/kdc.bar.edu@BAR.EDU ;
+}
+
+krb525/somehost.foo.edu@FOO.EDU = {
+	target_clients = *@FOO.EDU ;
+	target_servers = host/somehost.foo.edu@FOO.EDU ;
 }
 
 allowed_hosts = *.ncsa.uiuc.edu ;
