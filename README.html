@@ -12,7 +12,7 @@
 <CENTER><P>
 <HR WIDTH="100%"></P></CENTER>
 
-<CENTER><PRE>$Id: README.html,v 1.1 1997/09/08 15:41:33 vwelch Exp $ </PRE></CENTER>
+<CENTER><PRE>$Id: README.html,v 1.2 1997/09/17 16:57:55 vwelch Exp $ </PRE></CENTER>
 
 <CENTER><P>Von Welch &lt;<A HREF="mailto:vwelch@ncsa.uiuc.edu">vwelch@ncsa.uiuc.edu</A>&gt;</P></CENTER>
 
@@ -102,6 +102,8 @@ principal.</P>
 
 <P>You may also want to create a principal &quot;test&quot; for testing.</P>
 
+<P><B>krb525d daemon</B></P>
+
 <P>On the host where the daemon will run, add the krb525d/&lt;host&gt;
 key to the keytab. Install the daemon binary in your krb5/sbin directory.</P>
 
@@ -115,27 +117,57 @@ daemon:</P>
 
 <PRE>krb525        stream    tcp    nowait    root    /krb5/sbin/krb525d</PRE>
 
+<P><B>The krb525.conf configuration file</B></P>
+
 <P>In your krb5 directory, create the directory etc if it doesn't already
 exist and create a krb525.conf file. This file should look like the following:</P>
 
-<PRE>allowed_clients = {
+<PRE>allowed_clients = 
       krb525@NCSA.EDU
-}
-allowed_targets = {
-      test@NCSA.EDU
-}
-allowed_hosts = {
-      10.0.0.1
+      ;</PRE>
+
+<PRE>client_mappings = {
+      test0 test1 = test2 test3 ;
+      test4 = test 5;
 }</PRE>
 
-<P>The allowed_clients list specifies the list of client principals that
-are allowed to use the krb525 service. The allowed_targets are the list
-of client principals that tickets are allowed to be converted to. The allowed_hosts
-are a list of hosts that clients are allowed to connect from (note that
-currently you must put in IP&nbsp;addresses and not hostnames).</P>
+<PRE>allowed_hosts = 
+      10.0.0.1
+      somehost.somewhere.com
+      ;</PRE>
 
-<P>All three of these lists must be present or you will get permission
-errors trying to use krb525d. Currently there is no wildcard support.</P>
+<P>The allowed_clients list specifies the list of client principals that
+are allowed to use the krb525 service. If a principal is specified without
+a realm then the default realm is assumed.</P>
+
+<P>The client_mappings list specifies which principal conversions may be
+transformed in regard to the ticket's client. In this example either test0
+or test1 may be converted to test2 or test3 and test4 maybe converted to
+test5.</P>
+
+<P>The allowed_hosts list specifies which hosts may connect to krb525d.
+Hosts may be given as their IP&nbsp;address or fulle hostname.</P>
+
+<P>You also specify a seperate configuration for specific clients by adding
+a list like the following:</P>
+
+<PRE>test0 = {</PRE>
+
+<PRE>      target_clients = test1 test 2 ;
+      allowed_hosts = someother.host.edu ;</PRE>
+
+<PRE>}</PRE>
+
+<P>Rules for the configuration file:</P>
+
+<UL>
+<LI>All strings and characters must be delimited by whitespace or a carriage
+return.</LI>
+
+<LI>The wildcard characters * and ? are acceptable.</LI>
+</UL>
+
+<P><B>krb525 Client</B></P>
 
 <P>To install the client add the key for the krb525 principal to the keytab
 on the client's host and install the krb525 program in the krb5/bin directory.</P>

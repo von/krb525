@@ -1,7 +1,7 @@
 /*
  * parse_conf.h
  *
- * $Id: parse_conf.h,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: parse_conf.h,v 1.2 1997/09/17 16:58:00 vwelch Exp $
  *
  */
 
@@ -12,9 +12,9 @@ extern char pconf_error[];
 
 
 struct _pconf_entry {
-    char *string;	
+    char **strings;	
     int type;
-    char *value;
+    char **values;
     struct _pconf_entry *list;
     struct _pconf_entry *next;
 };
