@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.16 1999/11/02 16:17:17 vwelch Exp $
+ * $Id: client.c,v 1.17 1999/11/02 16:54:25 vwelch Exp $
  *
  */
 
@@ -44,36 +44,9 @@ extern char *optarg;
 #include "version.h"
 
 
+/* For exiting with error in main() */
 #define error_exit()	{ exit_code = 1; goto cleanup; }
 
-
-static krb5_error_code get_creds_with_keytab(krb5_context,
-					     krb5_principal,
-					     krb5_principal,
-					     krb5_flags,
-					     char *,
-					     krb5_creds *);
-static krb5_error_code get_creds_with_ccache(krb5_context,
-					     krb5_principal,
-					     krb5_principal,
-					     krb5_flags,
-					     char *,
-					     krb5_creds *);
-
-static int get_guid(char *,
-		    uid_t *,
-		    gid_t *);
-
-
-
-/* Default options if we are authenticating from keytab */
-#define DEFAULT_KEYTAB_TKT_OPTIONS	KDC_OPT_FORWARDABLE
-
-/* Default options if we are authenticating from cache */
-#define DEFAULT_CACHE_TKT_OPTIONS	KDC_OPT_FORWARDABLE
-
-/* Default options for credentials for krb525d */
-#define DEFAULT_KRB525_TKT_OPTIONS	0
 
 
 typedef struct _krb525_client_context {
@@ -145,6 +118,38 @@ typedef struct _krb525_client_context {
 
 
 
+static krb5_error_code get_creds_with_keytab(krb5_context,
+					     krb5_principal,
+					     krb5_principal,
+					     krb5_flags,
+					     char *,
+					     krb5_creds *);
+static krb5_error_code get_creds_with_ccache(krb5_context,
+					     krb5_principal,
+					     krb5_principal,
+					     krb5_flags,
+					     char *,
+					     krb5_creds *);
+
+static int connect_to_krb525d(krb525_client_context *);
+			      
+static int get_guid(char *,
+		    uid_t *,
+		    gid_t *);
+
+
+
+/* Default options if we are authenticating from keytab */
+#define DEFAULT_KEYTAB_TKT_OPTIONS	KDC_OPT_FORWARDABLE
+
+/* Default options if we are authenticating from cache */
+#define DEFAULT_CACHE_TKT_OPTIONS	KDC_OPT_FORWARDABLE
+
+/* Default options for credentials for krb525d */
+#define DEFAULT_KRB525_TKT_OPTIONS	0
+
+
+
 int
 main(argc, argv)
 int argc;
@@ -167,13 +172,11 @@ char *argv[];
     int arg;
     int arg_error = 0;
 
-    char **krb525d_hosts = NULL;
-    int krb525_host_num = 0;
-
 
     /* Initialize my context */
     memset(&my_context, 0, sizeof(my_context));
 
+    my_context.krb525d_port = -1;
     my_context.krb525d_sock = -1;
     my_context.krb525_sname = KRB525_SERVICE;
     my_context.krb525_tkt_options = DEFAULT_KRB525_TKT_OPTIONS;
@@ -641,76 +644,11 @@ char *argv[];
 	error_exit();
     }
 
-
-    /* Figure out the port number of the server */
-    if (my_context.krb525d_port == -1) {
-	struct servent *sp;
-	sp = getservbyname(KRB525_SERVICE, "tcp");
-	if (sp) {
-	    my_context.krb525d_port = sp->s_port;
-	} else {
-	    my_context.krb525d_port = KRB525_PORT;
-	}
-    }
-
-    /*
-     * Figure out hostname(s) of server(s). If user supplied a hostname, then
-     * use that. Otherwise try all the Kerberos servers for this realm.
-     */
-    if (my_context.krb525d_host) {
-	/* User provided a hostname, so build list from that */
-	krb525d_hosts = (char **) malloc( 2 * sizeof(char *));
-
-	if (!krb525d_hosts) {
-	    perror("malloc() failed");
-	    error_exit();
-	}
-
-	krb525d_hosts[0] = strdup(my_context.krb525d_host);
-	krb525d_hosts[1] = NULL;
-
-    } else {
-	if (retval = krb5_get_krbhst(my_context.krb5_context,
-				     &my_context.default_realm,
-				     &krb525d_hosts)) {
-	    com_err(my_context.progname, retval,
-		    "getting list of kerberos servers for realm %s",
-		    my_context.default_realm.data);
-	    error_exit();
-	}
-
-	if (!krb525d_hosts || !krb525d_hosts[0]) {
-	    fprintf(stderr, "Couldn't figure out name of kerberos server host");
-	    error_exit();
-	}
-    }
-
-    krb525_host_num = 0;
-
-    while (my_context.krb525d_host = krb525d_hosts[krb525_host_num]) {
-	/* Connect to the server */
-	if (my_context.verbose)
-	    printf("Trying to connect to krb525d on %s port %d\n",
-		   my_context.krb525d_host, my_context.krb525d_port);
-
-	if ((my_context.krb525d_sock =
-	     connect_to_server(my_context.krb525d_host,
-			       my_context.krb525d_port)) > 0 )
-	    break; /* Success */
-
-	if (my_context.verbose)
-	    printf("Connection failed: %s\n", strerror(errno));
-
-	krb525_host_num++;
-    }
-
-    if (my_context.krb525d_sock < 0) {
-	fprintf(stderr, "Couldn't connect to krb525d.\n");
+    /* Connect to krb525d */
+    if (connect_to_krb525d(&my_context)) {
+	/* Error message already printed */
 	error_exit();
     }
-
-    if (my_context.verbose)
-	printf("Connected to %s\n", my_context.krb525d_host);
 
     /*
      * Parse service name to authenticate with. (Default is
@@ -998,9 +936,6 @@ char *argv[];
 cleanup:
     /* XXX - lots of cleanup should be done here */
 
-    if (krb525d_hosts)
-	krb5_free_krbhst(my_context.krb5_context, krb525d_hosts);
-
     if (my_context.krb525d_sock > 0)
 	close(my_context.krb525d_sock);
 
@@ -1133,7 +1068,7 @@ get_guid(char *username,
     return 0;
 }
 
-#if 0
+
 
 /*
  * Connect to the krb525d daemon
@@ -1141,52 +1076,95 @@ get_guid(char *username,
  * Returns -1 on error, 0 otherwise
  */
 static int
-connect_to_krb525d(krb5_context context,
-		   char *krb525d_host,		/* May be NULL */
-		   int krb525_port)		/* May be -1 */
+connect_to_krb525d(krb525_client_context *my_context)
 {
-    char **krb525_hosts = NULL;
-    int krb525_host_num = 0;
+    char		**krb525d_hosts = NULL;
+    int			krb525_host_num = 0;
+    char		*krb525d_host;
+    int			status = -1;
+    krb5_error_code	retval;
 
-    
-    if (krb525d_host) {
-	/*
-	 * User provided a hostname, so build list from that
-	 */
-	krb525_hosts = (char **) malloc( 2 * sizeof(char *));
 
-	if (!krb525_hosts) {
-	    perror("malloc() failed");
-	    goto error;
-	}
-
-	krb525_hosts[0] = strdup(krb525_host);
-	krb525_hosts[1] = NULL;
-
-	if (!krb525_hosts[0]) {
-	    perror("strdup() failed");
-	    goto error;
-	}
-
-    } else {
-	/*
-	 * Else, use the list of KDCs for the default realm
-	 */
-	if (retval = krb5_get_krbhst(context, &default_realm, &krb525_hosts)) {
-	    com_err(progname, retval,
-		    "getting list of kerberos servers for realm %s",
-		    default_realm.data);
-	    error_exit();
-	}
-
-	if (!krb525_hosts || !krb525_hosts[0]) {
-	    fprintf(stderr, "Couldn't figure out name of kerberos server host");
-	    error_exit();
+    /* Figure out the port number of the server */
+    if (my_context->krb525d_port == -1) {
+	/* User didn't specify a port */
+	struct servent *sp;
+	sp = getservbyname(KRB525_SERVICE, "tcp");
+	if (sp) {
+	    my_context->krb525d_port = sp->s_port;
+	} else {
+	    my_context->krb525d_port = KRB525_PORT;
 	}
     }
 
-    /* XXX */
- error:
-    return 0;
+    /*
+     * Figure out hostname(s) of server(s). If user supplied a hostname, then
+     * use that. Otherwise try all the Kerberos servers for this realm.
+     */
+    if (my_context->krb525d_host) {
+	/* User provided a hostname, so build list from that */
+	krb525d_hosts = (char **) malloc( 2 * sizeof(char *));
+
+	if (!krb525d_hosts) {
+	    perror("malloc() failed");
+	    goto cleanup;
+	}
+
+	krb525d_hosts[0] = strdup(my_context->krb525d_host);
+	krb525d_hosts[1] = NULL;
+
+    } else {
+	if (retval = krb5_get_krbhst(my_context->krb5_context,
+				     &my_context->default_realm,
+				     &krb525d_hosts)) {
+	    com_err(my_context->progname, retval,
+		    "getting list of kerberos servers for realm %s",
+		    my_context->default_realm.data);
+	    goto cleanup;
+	}
+
+	if (!krb525d_hosts || !krb525d_hosts[0]) {
+	    fprintf(stderr, "Couldn't figure out name of kerberos server host");
+	    goto cleanup;
+	}
+    }
+
+    krb525_host_num = 0;
+
+    while (krb525d_host = krb525d_hosts[krb525_host_num]) {
+	/* Connect to the server */
+	if (my_context->verbose)
+	    printf("Trying to connect to krb525d on %s port %d\n",
+		   krb525d_host, my_context->krb525d_port);
+
+	if ((my_context->krb525d_sock =
+	     connect_to_server(krb525d_host,
+			       my_context->krb525d_port)) > 0 )
+	    break; /* Success */
+
+	if (my_context->verbose)
+	    printf("Connection failed: %s\n", strerror(errno));
+
+	krb525_host_num++;
+    }
+
+    if (my_context->krb525d_sock < 0) {
+	fprintf(stderr, "Couldn't connect to krb525d.\n");
+	goto cleanup;
+    }
+
+    /* Success */
+    status = 0;
+
+    my_context->krb525d_host = strdup(krb525d_host);
+
+    if (my_context->verbose)
+	printf("Connected to %s\n", my_context->krb525d_host);
+
+ cleanup:
+    if (krb525d_hosts)
+	krb5_free_krbhst(my_context->krb5_context, krb525d_hosts);
+
+    return status;
 }
-#endif /* 0 */
+
