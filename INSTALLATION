@@ -24,7 +24,7 @@ Installing the Daemon
   Then add the following line to your /etc/inetd.conf and restart your
   inetd daemon:
 
-  krb525d   stream    tcp  nowait    root /krb5/sbin/krb525d  krb525d
+  krb525   stream    tcp  nowait    root /krb5/sbin/krb525d  krb525d
 
   You will need to create a principal of the form "krb525/<hostname>"
   for each host that krb525d is running on. It is suggest that the
