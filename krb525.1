@@ -1,7 +1,7 @@
 .\" 
 .\" krb525 man page
 .\"
-.\" $Id: krb525.1,v 1.2 1997/09/30 15:39:59 vwelch Exp $
+.\" $Id: krb525.1,v 1.3 1997/10/07 14:42:59 vwelch Exp $
 .\"
 .TH KRB525 1
 .SH NAME
@@ -9,6 +9,7 @@ krb525 \- Convert clients or servers on a Kerberos 5 ticket
 .SH SYNOPSIS
 .TP
 .B krb525 
+[\fB\-a\fP] [\fB\-A\fP]
 [\fB\-c\fP \fIclient\fP] [\fB\-C\fP \fItarget_client\fP]
 [\fB\-h\fP \fIserver_host\fP] [\fB\-i\fP \fIinput_cache\fP]
 [\fB\-k\fP] [\fB\-o\fP \fIoutput_cache\fP] [\fB\-p\fP \fIserver_port\fP]
@@ -45,6 +46,14 @@ back the
 client. The configuration file for the daemon,
 krb525.conf(5), control which principal conversion are permissable.
 .SH OPTIONS
+.TP
+.B \-a
+specifies that krb525 should run the aklog program. See the section on
+RUNNING AKLOG below for details.
+.TP
+.B \-A
+specifies that krb525 should not run the aklog program. See the section on
+RUNNING AKLOG below for details.
 .TP
 \fB\-c\fP \fIclient\fP
 specifies the initial client principal name on the ticket sent to
@@ -176,6 +185,51 @@ Valid starting      Expires             Service principal
 24 Sep 97 15:29:42  25 Sep 97 01:19:35  krbtgt/NCSA.EDU@NCSA.EDU
 
 .fi
+.SH TICKET OPTIONS
+If you are getting your ticket to convert from a cache, then the
+converted ticket will have the same ticket options (e.g. forwardable,
+lifetime) as the initial ticket.
+.PP
+If you are using a keytab file to get a ticket to convert, then
+.I krb525
+will automatically make the acquired ticket forwardable.
+.PP
+Currently there is no way to have
+.I krb525
+set different options. If you need to change the options, you should run
+kinit(1) on the ticket to do so.
+.SH RUNNING AKLOG
+If your Kerberos 5 installation has the AFS-KRB5 migration kit
+installed and krb525 was built to take advantage of this, then krb525
+can run the  
+.I aklog
+program after converting the ticket.
+.I krb525
+will look in the krb5.conf(5) file for a entry like the following:
+.nf
+
+[appdefaults]
+	krb5_run_aklog = 1
+	krb5_aklog_path = /krb5/bin/aklog
+
+.fi
+The value for krb5_run_aklog specifies wther aklog should be run
+(run_aklog = 1) or should not be run (run_aklog = 0). The string
+specified by krb5_aklog_path is used as the path for the aklog
+program.
+.PP
+The command line options
+.B \-a 
+and
+.B \-A
+can override the krb5_run_aklog value in krb5.conf. If
+.B \-a
+is specified, krb525 will always try to run aklog. If
+.B \-A
+is specified then krb525 will not try to run aklog.
+.PP
+For more information about the NRL AFS-KRB5 migration kit see
+ftp://ftp.cmf.nrl.navy.mil/pub/kerberos5
 .SH ENVIRONMENT
 .I krb525
 uses the following environment variable:
