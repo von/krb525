@@ -3,7 +3,7 @@
  *
  * krb525 network I/O routines
  *
- * $Id: netio.c,v 1.2 1997/09/25 19:28:52 vwelch Exp $
+ * $Id: netio.c,v 1.3 1999/10/11 19:15:32 vwelch Exp $
  */
 
 /*
@@ -25,11 +25,27 @@
 #include <netdb.h>
 #include <string.h>
 
+#ifdef DEBUG_NETIO
+#include <stdio.h>		/* for stderr */
+#endif /* DEBUG_NETIO */
 
 #include "netio.h"
 
 char netio_error[256] = "No error";
 
+/*
+ * Find a 32-bit value for sending length
+ */
+#if SIZEOF_LONG == 4
+typedef unsigned long net_number;
+#define convert_to_network_order(i) htonl(i)
+#define convert_from_network_order(i) ntohl(i)
+
+#else
+
+#error Need to find a 4 byte network value for this architecture.
+
+#endif
 
 /*
  *
@@ -75,12 +91,18 @@ send_msg(krb5_context context,
 	 krb5_data message)
 {
     krb5_error_code	retval;
+    net_number		length;
 
+#ifdef DEBUG_NETIO
+    fprintf(stderr, "netio: Writing message of length %d\n", message.length);
+#endif
 
     /* Send message length */
-    if ((retval = krb5_net_write(context, fd, (char *)&(message.length),
-				 sizeof(message.length))) == -1) {
-	sprintf(netio_error, "%s while writing message len",
+    length = convert_to_network_order(message.length);
+
+    if ((retval = krb5_net_write(context, fd, (char *)&(length),
+				 sizeof(length))) == -1) {
+	sprintf(netio_error, "%s while writing message length",
 		strerror(errno));
 	return -1;
     }
@@ -132,17 +154,23 @@ read_msg(krb5_context context,
 	 krb5_data *message)
 {
     krb5_error_code	retval;
-
+    net_number		length;
     
     /* Read message length */
-    if ((retval = krb5_net_read(context, fd, (char *)&(message->length),
-			       sizeof(message->length))) <= 0) {
+    if ((retval = krb5_net_read(context, fd, (char *)&(length),
+			       sizeof(length))) <= 0) {
 	if (retval == 0)
 	    errno = ECONNABORTED;
 	sprintf(netio_error, "%s reading message length",
 		strerror(errno));
 	return -1;
     }
+
+    message->length = convert_from_network_order(length);
+
+#ifdef DEBUG_NETIO
+    fprintf(stderr, "Reading message of length %d\n", message->length);
+#endif /* DEBUG_NETIO */
 
     if ((message->data = (char *) malloc(message->length)) == NULL) {
 	sprintf(netio_error, "malloc() failed: %s",

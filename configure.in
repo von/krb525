@@ -1,7 +1,7 @@
 dnl
 dnl configure.in for krb525
 dnl
-dnl $Id: configure.in,v 1.5 1999/10/08 21:52:11 vwelch Exp $
+dnl $Id: configure.in,v 1.6 1999/10/11 19:15:32 vwelch Exp $
 dnl
 AC_INIT(krb525.h)
 dnl
@@ -166,6 +166,12 @@ elif test "$have_func_compile" = yes ; then
 else
   AC_MSG_WARN([No support for regular expression matching])
 fi
+dnl
+dnl Get size of basic types for netio
+dnl
+AC_CHECK_SIZEOF(short, 0)
+AC_CHECK_SIZEOF(int, 0)
+AC_CHECK_SIZEOF(long, 0)
 dnl
 AC_SUBST(CC)
 AC_SUBST(CCOPTS)
