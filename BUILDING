@@ -38,6 +38,12 @@ BUILDING KRB525
     Specify the install path for the krb525 client and daemon. This
     defaults to your Kerberos 5 install path.
 
+    --with-afs-krb5
+
+    Specify that you have the NRL AFS-KRB5 migration kit. (For information
+    on the migration kit see: ftp://ftp.cmf.nrl.navy.mil/pub/kerberos5).
+    By default configure will try to determine if you have the migration
+    kit by looking for krb5_appdefault_boolean() in libkrb5.a.
 
   Run "configure --help" for a complete list of options.
 
@@ -48,6 +54,6 @@ BUILDING KRB525
 3) See the file INSTALLATION for installation directions.
 
 
-$Id: BUILDING,v 1.1 1997/09/25 19:28:29 vwelch Exp $
+$Id: BUILDING,v 1.2 1997/10/07 14:40:28 vwelch Exp $
 
 
