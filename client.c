@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.11 1999/10/08 19:49:24 vwelch Exp $
+ * $Id: client.c,v 1.12 1999/10/11 15:50:12 vwelch Exp $
  *
  */
 
@@ -832,7 +832,7 @@ char *argv[];
 	 */
 	if (!run_aklog && !dont_run_aklog)
 	    krb5_appdefault_boolean(context, progname, &default_realm,
-				    "krb5_run_aklog", 0, &run_aklog);
+				    "krb5_run_aklog", 0, (int *) &run_aklog);
 
 	if (run_aklog) {
 	    char *aklog_path;
