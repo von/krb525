@@ -1,7 +1,7 @@
 dnl
 dnl configure.in for krb525
 dnl
-dnl $Id: configure.in,v 1.4 1997/10/14 18:22:29 vwelch Exp $
+dnl $Id: configure.in,v 1.5 1999/10/08 21:52:11 vwelch Exp $
 dnl
 AC_INIT(krb525.h)
 dnl
@@ -179,5 +179,11 @@ AC_SUBST(K5_DB_INC_FILES)
 AC_SUBST(K5_DB_LIB_PATH)
 AC_SUBST(K5_DB_LIBS)	
 AC_SUBST(K5_DB_INC_PATH)
+dnl
+
+SUBDIRS="tests"
+
+AC_CONFIG_SUBDIRS($SUBDIRS)
+
 dnl
 AC_OUTPUT(Makefile)
