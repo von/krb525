@@ -1,5 +1,7 @@
 1999-10-06  Von Welch  <vwelch@ncsa.uiuc.edu>
 
+	* version.h (KRB525_VERSION_STRING): Bumped version to 0.2.0-Develop
+
 	* INSTALLATION: Added documentation about version
 
 	* krb525.conf.5 (client_mappings): Added documentation about version
