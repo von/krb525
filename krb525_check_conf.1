@@ -1,0 +1,105 @@
+.\" 
+.\" krb525_check_conf man page
+.\"
+.\" $Id: krb525_check_conf.1,v 1.1 1999/10/06 18:13:19 vwelch Exp $
+.\"
+.TH KRB525_CHECK_CONF 1
+.SH NAME
+krb525_check_conf \- Check a krb525 configuration file
+.SH SYNOPSIS
+.TP
+.B krb525_check_conf 
+[\fB\-c\fP \fIclient\fP] [\fB\-C\fP \fItarget_client\fP]
+[\fB\-h\fP \fIhostname\fP] [\fB\-i\fP \fIinput_cache\fP]
+[\fB\-s\fP \fIservice\fP] [\fB\-S\fP \fItarget_service\fP]
+[\fB\-v\fP] [\fB\-V\fP] [<configuration file>]
+.br
+.SH DESCRIPTION
+.I krb525_check_conf
+check a
+.Ikrb525d(8)
+configuration file. Given a mapping it will read the given configuration
+file and report wether or not the mapping would be allowed.
+.SH OPTIONS
+.TP
+\fB\-c\fP \fIclient\fP
+specifies the client principal name to be simulated as the
+original client principal for the request.
+By default this is the default principal of the current credentials cache.
+.TP
+\fB\-C\fP \fItarget_client\fP
+specifies the target client to be used in the test.
+By default this is the same as the original client name (if a target
+service is specified) or the username of the user running the
+process (if no target service is specified).
+.TP
+\fB\-h\fP \fIhostname\fP
+specifes the host that should be simulated as the originating host
+for the request.
+.TP
+\fB\-i\fP \fIinput_cache\fP
+specifies the cache to use for getting the default client name.
+By default it will be the current user's default cache.
+.TP
+\fB\-s\fP \fIservice\fP
+specifies the service principal name to be simulated as the original
+service principal for the request.
+By default the service will be the Kerberos ticket-granting-ticket
+service for the local realm.
+.TP
+\fB\-S\fP \fItarget_service\fP
+specifies the target serivce to be used in the test.
+By default the service will be unchanged and this will be the same as
+.IR service
+unless no target serivce and client were specified in which case this
+will be the Kerberos ticket-granting-ticket service for the local realm.
+.TP
+.TP
+.B \-v
+specifies that
+.I krb525_conf_check
+should run in verbose mode. This can be handy for debugging.
+.TP
+.B \-V
+specifies that
+.I krb525_conf_check
+should print it's version number and exit.
+.SH EXAMPLES
+This example shows
+.I krb5_check_conf
+being used to see if mary@FOO.BAR could change the client in her ticket for
+krbtgt/FOO.BAR@FOO.BAR to jane@FOO.BAR with the request coming from
+somehow.foo.bar
+
+.nf
+%./krb525_check_conf -c mary@FOO.BAR -s krbtgt/FOO.BAR@FOO.BAR -C jane@FOO.BAR -v -h somehost.foo.bar test.conf
+Initializing Kerberos
+Parsing client name mary@FOO.BAR
+Client name is mary@FOO.BAR
+Parsing service name krbtgt/FOO.BAR@FOO.BAR
+No target server speicied, useing original: krbtgt/FOO.BAR@FOO.BAR
+Reading configuration from test.conf
+Checking configuration for:
+    mary@FOO.BAR for krbtgt/FOO.BAR@FOO.BAR
+      converting to
+    jane@FOO.BAR for krbtgt/FOO.BAR@FOO.BAR
+      from somehost.foo.bar
+SUCCESS
+.fi
+
+.SH ENVIRONMENT
+.I krb525_check_conf
+uses the following environment variable:
+.TP "\w'.SM KRB5CCNAME\ \ 'u"
+.SM KRB5CCNAME
+Location of the default credentials (ticket) cache.
+.SH FILES
+.TP "\w'/tmp/krb5cc_[uid]\ \ 'u"
+/tmp/krb5cc_[uid]
+default credentials cache ([uid] is the decimal UID of the user).
+.SH SEE ALSO
+krb525.conf(5), krb525d(8), kinit(1)
+.SH DIAGNOSTICS
+Exit status is 0 if the conversion would have succeeded, 1 if it
+would have failed, or 2 if some other error occurred.
+

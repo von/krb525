@@ -2,7 +2,7 @@
 #
 # Makefile for krb525
 #
-# $Id: Makefile.in,v 1.3 1997/09/25 19:28:35 vwelch Exp $
+# $Id: Makefile.in,v 1.4 1999/10/06 18:13:19 vwelch Exp $
 #
 ######################################################################
 
@@ -35,6 +35,7 @@ CPPFLAGS	=	$(K5INCPATH)
 
 CLIENT		=	krb525
 SERVER		=	krb525d
+BINARIES	=	$(CLIENT) $(SERVER) krb525_check_conf
 
 CLIENTLIBS	=	-lkrb5 -lcrypto -lcom_err $(SYSLIBS)
 #
@@ -47,19 +48,21 @@ SERVERLIBS	=	-lkadm5srv -lkdb5 -lgssrpc -ldyn @SERVERLIBS@ \
 			$(CLIENTLIBS) @K5_DB_LIBS@
 
 JOINT_FILES	=	netio.c auth_con.c
+CONF_FILES	=	srv_conf.c parse_conf.c
 CLIENT_FILES	=	client.c
-SERVER_FILES	=	server.c srv_conf.c parse_conf.c @K5_DB_SRC_FILES@
+SERVER_FILES	=	server.c $(CONF_FILES) @K5_DB_SRC_FILES@
 
 JOINT_INCS	=	krb525.h netio.h auth_con.h
 CLIENT_INCS	=	$(JOINT_INCS)
 SERVER_INCS	=	$(JOINT_INCS) srv_conf.h parse_conf.h @K5_DB_INC_FILES@
 
+CONF_OBJS	=	$(CONF_FILES:.c=.o)
 CLIENT_OBJS	=	$(CLIENT_FILES:.c=.o) $(JOINT_FILES:.c=.o)
 SERVER_OBJS	=	$(SERVER_FILES:.c=.o) $(JOINT_FILES:.c=.o)
 
 ######################################################################
 
-all: $(CLIENT) $(SERVER)
+all: $(BINARIES)
 
 $(SERVER): $(SERVER_OBJS)
 	$(CC) -o $@ $(SERVER_OBJS) $(K5LIBPATH) $(SERVERLIBS)
@@ -67,8 +70,11 @@ $(SERVER): $(SERVER_OBJS)
 $(CLIENT): $(CLIENT_OBJS)
 	$(CC) -o $@ $(CLIENT_OBJS) $(K5LIBPATH) $(CLIENTLIBS)
 
+krb525_check_conf: krb525_check_conf.o $(CONF_OBJS)
+	$(CC) -o $@ krb525_check_conf.o $(CONF_OBJS) $(K5LIBPATH) $(CLIENTLIBS)
+
 clean:
-	rm -f $(SERVER_OBJS) $(CLIENT_OBJS) $(CLIENT) $(SERVER)
+	rm -f $(SERVER_OBJS) $(CLIENT_OBJS) $(BINARIES)
 
 clobber: clean
 	rm -f config.cache Makefile config.h config.status config.log
@@ -77,6 +83,7 @@ depend:
 	makedepend -- $(CPPFLAGS) \
 		-- $(JOINT_FILES) $(CLIENT_FILES) $(SERVER_FILES)
 
-install: $(CLIENT) $(SERVER)
-	cp $(CLINET) $(INSTALLPATH)/bin
+install: $(BINARIES)
+	cp $(CLIENT) $(INSTALLPATH)/bin
+	cp krb525_check_conf $(INSTALLPATH)/bin
 	cp $(SERVER) $(INStALLPATH)/sbin
