@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.6 1997/10/02 15:54:07 vwelch Exp $
+ * $Id: client.c,v 1.7 1997/10/07 14:46:08 vwelch Exp $
  *
  */
 
@@ -50,11 +50,13 @@ extern char *optarg;
 static krb5_error_code get_creds_with_keytab(krb5_context,
 					     krb5_principal,
 					     krb5_principal,
+					     krb5_flags,
 					     char *,
 					     krb5_creds *);
 static krb5_error_code get_creds_with_ccache(krb5_context,
 					     krb5_principal,
 					     krb5_principal,
+					     krb5_flags,
 					     char *,
 					     krb5_creds *);
 
@@ -66,6 +68,15 @@ static int get_guid(char *,
 
 /* Globals */
 static char *progname;			/* This program's name */
+
+/* Default options if we are authenticating from keytab */
+#define KEYTAB_DEFAULT_TKT_OPTIONS	KDC_OPT_FORWARDABLE
+
+/* Default options if we are authenticating from cache */
+#define CACHE_DEFAULT_TKT_OPTIONS	KDC_OPT_FORWARDABLE
+
+/* Default options for credentials for krb525d */
+#define GATEWAY_DEFAULT_TKT_OPTIONS	0
 
 
 void
@@ -99,15 +110,19 @@ char *argv[];
     char *krb525_sname = KRB525_SERVICE;
     krb5_principal krb525_cprinc, krb525_sprinc;
     krb5_creds krb525_creds;
+    krb5_flags gateway_options = GATEWAY_DEFAULT_TKT_OPTIONS;
 
     /* Credentials we are converting */
     char *cname = NULL;
     char *sname = NULL;
     krb5_principal cprinc, sprinc;
+
+    /* Target credentials */
     char *target_cname = NULL;
     char *target_sname = NULL;
     krb5_principal target_cprinc, target_sprinc;
     krb5_creds target_creds;
+    krb5_flags target_options = 0;
 
     /* Information about who should own target cache */
     char *cache_owner = NULL;
@@ -138,7 +153,6 @@ char *argv[];
 
     int arg;
     int arg_error = 0;
-    char *options;
 
     int verbose = 0;
 
@@ -150,25 +164,26 @@ char *argv[];
     else
 	progname = argv[0];
 
-    options = 
-#ifdef AFS_KRB5
-	"aA"
-#endif
-	"c:C:g:h:i:ko:p:s:S:t:u:vV"
-	;
-
     /* Process arguments */
-    while ((arg = getopt(argc, argv, options)) != EOF)
+    while ((arg = getopt(argc, argv, "aAc:C:g:h:i:ko:p:s:S:t:u:vV")) != EOF)
 	switch (arg) {
-#ifdef AFS_KRB5
 	case 'a':
+#ifdef AFS_KRB5
 	    run_aklog = 1;
+#else
+	    fprintf(stderr, "%s: -a option not supported\n", progname);
+	    arg_error++;
+#endif
 	    break;
 
 	case 'A':
+#ifdef AFS_KRB5
 	    dont_run_aklog = 1;
+#else
+	    fprintf(stderr, "%s: ignoring -A, not supported\n", progname);
+#endif
 	    break;
-#endif /* AFS_KRB5 */
+
 
 	case 'c':
 	    cname = optarg;
@@ -292,11 +307,21 @@ char *argv[];
 	error_exit();
     }
 
+    /* XXX Why is this signal() call here? */
     (void) signal(SIGPIPE, SIG_IGN);
+
     if (!valid_cksumtype(CKSUMTYPE_CRC32)) {
 	com_err(progname, KRB5_PROG_SUMTYPE_NOSUPP, "while using CRC-32");
 	error_exit();
     }
+
+    /*
+     * Set default ticket options
+     */
+    if (use_keytab)
+	target_options |= KEYTAB_DEFAULT_TKT_OPTIONS;
+    else
+	target_options |= CACHE_DEFAULT_TKT_OPTIONS;
 
     /*
      * Get our cache ready for use if appropriate.
@@ -526,10 +551,10 @@ char *argv[];
  
     /* Get credentials to converted */
     if (use_keytab)
-	retval = get_creds_with_keytab(context, cprinc, sprinc,
+	retval = get_creds_with_keytab(context, cprinc, sprinc, target_options,
 				       keytab_name, &target_creds);
     else
-	retval = get_creds_with_ccache(context, cprinc, sprinc,
+	retval = get_creds_with_ccache(context, cprinc, sprinc, target_options,
 				       source_cache_name, &target_creds);
 
     if (retval) {
@@ -586,8 +611,8 @@ char *argv[];
     while (krb525_host = krb525_hosts[krb525_host_num]) {
 	/* Connect to the server */
 	if (verbose)
-	printf("Trying to connect to krb525d on %s port %d\n",
-	       krb525_host, krb525_port);
+	    printf("Trying to connect to krb525d on %s port %d\n",
+		   krb525_host, krb525_port);
 
 	if ((sock = connect_to_server(krb525_host, krb525_port)) > 0 )
 	    break; /* Success */
@@ -629,10 +654,12 @@ char *argv[];
 
     if (use_keytab)
 	retval = get_creds_with_keytab(context, krb525_cprinc, krb525_sprinc,
-				       keytab_name, &krb525_creds);
+				       gateway_options, keytab_name,
+				       &krb525_creds);
     else
 	retval = get_creds_with_ccache(context, krb525_cprinc, krb525_sprinc,
-				       source_cache_name, &krb525_creds);
+				       gateway_options, source_cache_name,
+				       &krb525_creds);
 
     if (retval) {
 	/* Detailed error message already printed */
@@ -873,11 +900,11 @@ static krb5_error_code
 get_creds_with_keytab(krb5_context context,
 		      krb5_principal client,
 		      krb5_principal server,
+		      krb5_flags options,
 		      char *keytab_name,
 		      krb5_creds *creds)
 {
     krb5_error_code	retval;
-    krb5_flags		options = 0;
     krb5_address 	**addrs = (krb5_address **)0;
     krb5_preauthtype 	*preauth = NULL;
     krb5_preauthtype 	preauth_list[2] = { 0, -1 };
@@ -920,6 +947,7 @@ static krb5_error_code
 get_creds_with_ccache(krb5_context context,
 		      krb5_principal client,
 		      krb5_principal server,
+		      krb5_flags options,
 		      char *cache_name,
 		      krb5_creds *creds)
 {
@@ -928,7 +956,6 @@ get_creds_with_ccache(krb5_context context,
     krb5_preauthtype 	*preauth = NULL;
     krb5_preauthtype 	preauth_list[2] = { 0, -1 };
     krb5_ccache		ccache;
-    krb5_flags		options = 0;
     krb5_creds		in_creds, *out_creds;
 
 

@@ -1,3 +1,9 @@
+Tue Oct  7 09:43:39 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
+
+	* client.c (get_creds_with_keytab, get_creds_with_ccache): 
+	Added options to passed arguments. Changed callers.
+	Code will not make tickets from keytab forwardable.
+	
 Thu Oct  2 10:44:36 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
 
 	* ChangeLog: Created ChangeLog file.
