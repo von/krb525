@@ -1,5 +1,9 @@
 1999-10-06  Von Welch  <vwelch@ncsa.uiuc.edu>
 
+	* parse_conf.c (read_list): An empty list is now returned as a
+	pointer to an array with one element (NULL) instead of a NULL pointer
+	to prevent me from having to treat empty lists as exceptions.
+
 	* version.h (KRB525_VERSION_STRING): Bumped version to 0.2.0-Develop
 
 	* INSTALLATION: Added documentation about version

@@ -3,7 +3,7 @@
  *
  * Routines to read and parse a configuration file.
  *
- * $Id: parse_conf.c,v 1.4 1999/10/06 19:12:16 vwelch Exp $
+ * $Id: parse_conf.c,v 1.5 1999/10/06 20:05:03 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -409,22 +409,15 @@ read_list(pconf_context *pcontext,
 	    goto error_return;
 	}
 
-    if (num_items) {
-	/* Trim array down to size, leaving room for terminating NULL */
-	list = (char **) realloc(list, sizeof(char *) * (num_items + 1));
-
-	if (list == NULL) {
-	    sprintf(pconf_error, "realloc() failed");
-	    goto error_return;
-	}
-
-	list[num_items] = NULL;
-
-    } else {
-	/* Nothing read */
-	free(list);
-	list = NULL;
+    /* Trim array down to size, leaving room for terminating NULL */
+    list = (char **) realloc(list, sizeof(char *) * (num_items + 1));
+    
+    if (list == NULL) {
+	sprintf(pconf_error, "realloc() failed");
+	goto error_return;
     }
+
+    list[num_items] = NULL;
 
     *terminator = string;
     *error = FALSE;
