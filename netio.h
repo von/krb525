@@ -1,7 +1,7 @@
 /*
  * netio.h
  *
- * $Id: netio.h,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: netio.h,v 1.2 1999/11/03 20:23:21 vwelch Exp $
  */
 
 #ifndef __NETIO_H
@@ -21,6 +21,10 @@ extern int send_msg(krb5_context,
 		    int,
 		    krb5_data);
 
+extern int send_value(krb5_context,
+		      int,
+		      int);
+
 extern int read_encrypt(krb5_context,
 			krb5_auth_context,
 			int,
@@ -29,6 +33,10 @@ extern int read_encrypt(krb5_context,
 extern int read_msg(krb5_context,
 		    int,
 		    krb5_data *);
+
+extern int read_value(krb5_context,
+		      int,
+		      int *);
 
 extern int connect_to_server(char *,
 			     int);

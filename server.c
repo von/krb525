@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.13 1999/10/11 19:23:19 vwelch Exp $
+ * $Id: server.c,v 1.14 1999/11/03 20:23:22 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -341,7 +341,8 @@ handle_connection(krb5_context context,
 
     krb525_request request;		/* Information about request */
 
-    int response_status;
+    unsigned int response_status;
+
     char errbuf[BUFSIZ];
 
     krb5_data resp_data;		/* Buffer for response */
@@ -504,10 +505,9 @@ handle_connection(krb5_context context,
 
 respond:
     /* Write response */
-    resp_data.length = sizeof(response_status);
-    resp_data.data = (char *) &response_status;
+    retval = send_value(context, sock, response_status);
 
-    if ((retval = send_msg(context, sock, resp_data)) < 0) {
+    if (retval < 0) {
 	syslog(LOG_ERR, "Sending response status to client: %s", netio_error);
 	goto done;
     }
@@ -609,8 +609,8 @@ log_request(krb5_context		context,
 	host = "<unknown>";
 
     syslog(LOG_INFO,
-	   "Connection from %s@%s: %s for %s -> %s for %s",
-	   requesting_client, host,
+	   "Connection from %s: %s requests %s for %s -> %s for %s",
+	   host, requesting_client,
 	   tkt_client, tkt_server,
 	   target_client, target_server);
 

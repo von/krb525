@@ -3,7 +3,7 @@
  *
  * krb525 network I/O routines
  *
- * $Id: netio.c,v 1.3 1999/10/11 19:15:32 vwelch Exp $
+ * $Id: netio.c,v 1.4 1999/11/03 20:23:21 vwelch Exp $
  */
 
 /*
@@ -91,21 +91,16 @@ send_msg(krb5_context context,
 	 krb5_data message)
 {
     krb5_error_code	retval;
-    net_number		length;
 
 #ifdef DEBUG_NETIO
     fprintf(stderr, "netio: Writing message of length %d\n", message.length);
 #endif
 
     /* Send message length */
-    length = convert_to_network_order(message.length);
+    retval = send_value(context, fd, message.length);
 
-    if ((retval = krb5_net_write(context, fd, (char *)&(length),
-				 sizeof(length))) == -1) {
-	sprintf(netio_error, "%s while writing message length",
-		strerror(errno));
+    if (retval)
 	return -1;
-    }
 
     /* Send message */
     if ((retval = krb5_net_write(context, fd, message.data,
@@ -117,6 +112,30 @@ send_msg(krb5_context context,
     
     return 0;
 }
+
+
+
+int
+send_value(krb5_context context,
+	   int fd,
+	   int value)
+{
+    krb5_error_code	retval;
+    net_number		nvalue;
+
+    nvalue = convert_to_network_order(value);
+
+    retval = krb5_net_write(context, fd, (char *)&(nvalue), sizeof(nvalue));
+
+    if (retval == -1) {
+	sprintf(netio_error, "%s while writing value",
+		strerror(errno));
+	return -1;
+    }
+
+    return 0;
+}
+
 
 
 
@@ -149,24 +168,18 @@ read_encrypt(krb5_context context,
 
 
 
+int
 read_msg(krb5_context context,
 	 int fd,
 	 krb5_data *message)
 {
     krb5_error_code	retval;
-    net_number		length;
     
     /* Read message length */
-    if ((retval = krb5_net_read(context, fd, (char *)&(length),
-			       sizeof(length))) <= 0) {
-	if (retval == 0)
-	    errno = ECONNABORTED;
-	sprintf(netio_error, "%s reading message length",
-		strerror(errno));
-	return -1;
-    }
+    retval = read_value(context, fd, &message->length);
 
-    message->length = convert_from_network_order(length);
+    if (retval < 0)
+	return -1;
 
 #ifdef DEBUG_NETIO
     fprintf(stderr, "Reading message of length %d\n", message->length);
@@ -191,6 +204,35 @@ read_msg(krb5_context context,
 
     return retval;
 }
+
+
+
+int
+read_value(krb5_context context,
+	   int fd,
+	   int *value)
+{
+    krb5_error_code	retval;
+    net_number		nvalue;
+
+
+    retval = krb5_net_read(context, fd, (char *) &nvalue,
+			   sizeof(nvalue));
+
+    if (retval <= 0) {
+	if (retval == 0)
+	    errno = ECONNABORTED;
+
+	sprintf(netio_error, "%s reading message length",
+		strerror(errno));
+	return -1;
+    }
+
+    *value = convert_from_network_order(nvalue);
+
+    return 0;
+}
+
 
 
 /*

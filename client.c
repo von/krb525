@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.18 1999/11/02 21:48:12 vwelch Exp $
+ * $Id: client.c,v 1.19 1999/11/03 20:23:21 vwelch Exp $
  *
  */
 
@@ -417,20 +417,20 @@ char *argv[];
     }
  
     /* Read reply */
-    if ((retval = read_msg(my_context.krb5_context,
-			   my_context.krb525d_sock,
-			   &recv_data)) < 0) {
+    retval = read_value(my_context.krb5_context,
+			my_context.krb525d_sock,
+			&resp_status);
+
+    if (retval < 0) {
 	fprintf(stderr, "%s reading reply\n", netio_error);
 	error_exit();
     }
-    
-    resp_status = *((int *) recv_data.data);
 
     switch(resp_status) {
     case STATUS_OK:
 	/* Read new ticket from server */
 	if (my_context.verbose)
-	    printf("Reading converted ticket from server\n");
+	    printf("Success. Reading converted ticket from server\n");
 
 	if ((retval = read_encrypt(my_context.krb5_context,
 				   my_context.auth_context,
