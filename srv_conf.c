@@ -4,7 +4,7 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.6 1999/10/08 19:49:26 vwelch Exp $
+ * $Id: srv_conf.c,v 1.7 1999/10/08 21:37:58 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -338,8 +338,9 @@ check_conf(krb525_request *request)
 	    if (entry) {
 		if (find_princ_in_regex_values(request->krb5_context,
 					       request->tkt_client,
-					       entry) == NULL) {
-		    sprintf(srv_conf_error, "Source client explicitly allowed");
+					       entry) != NULL) {
+		    sprintf(srv_conf_error,
+			    "Source client explicitly disallowed");
 		    goto done;
 		}
 	    }
