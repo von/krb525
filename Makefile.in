@@ -2,7 +2,7 @@
 #
 # Makefile for krb525
 #
-# $Id: Makefile.in,v 1.5 1999/10/08 19:49:23 vwelch Exp $
+# $Id: Makefile.in,v 1.6 1999/10/11 19:12:43 vwelch Exp $
 #
 ######################################################################
 
@@ -78,6 +78,8 @@ clean:
 
 clobber: clean
 	rm -f config.cache Makefile config.h config.status config.log
+
+distclean: clobber
 
 depend:
 	makedepend -- $(CPPFLAGS) \
