@@ -3,9 +3,12 @@
  *
  * Deal with kerberos database.
  *
- * $Id: k5_db.c,v 1.2 1997/09/17 16:57:57 vwelch Exp $
+ * $Id: k5_db.c,v 1.3 1997/09/25 19:28:45 vwelch Exp $
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <krb5.h>
 #include <kadm5/admin.h>
@@ -74,12 +77,19 @@ k5_db_close(krb5_context context)
 krb5_error_code
 k5_db_get_key(krb5_context context,
 	      krb5_principal princ,
-	      krb5_keyblock *key,
+	      krb5_keyblock **key,
 	      krb5_enctype ktype)
 {
     krb5_error_code		retval;
     kadm5_principal_ent_rec	princ_ent;
 
+
+    *key = (krb5_keyblock *) malloc(sizeof(krb5_keyblock));
+
+    if (*key == NULL) {
+	sprintf(k5_db_error, "malloc failed");
+	return -1;
+    }
 
     if (retval = kadm5_get_principal(handle, princ,
 				      &princ_ent, KADM5_KEY_DATA)) {
@@ -93,7 +103,7 @@ k5_db_get_key(krb5_context context,
 				   ktype,
 				   -1,
 				   -1,
-				   key,
+				   *key,
 				   NULL,
 				   NULL))
 	sprintf(k5_db_error, "%s decrypting key",

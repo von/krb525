@@ -1,0 +1,86 @@
+.\" 
+.\" krb525d man page
+.\"
+.\" $Id: krb525d.8,v 1.1 1997/09/25 19:28:51 vwelch Exp $
+.\"
+.TH KRB525D 8
+.SH NAME
+krb525d \- Kerberos V5 Ticket translater daemon
+.SH SYNOPSIS
+.B krb525d
+[
+.B \-c
+.I config_file
+] [
+.B \-d
+] [
+.B \-k
+] [
+.B \-p
+.I port
+] [
+.B \-s
+.I service_name
+] [
+.B \-t
+.I keytab_name
+]
+.br
+.SH DESCRIPTION
+.I krb525d
+is the daemon that works with the krb525(1) program to convert
+client and/or serice principals in Kerberos 5 tickets. It receive the
+encrypted ticket from the krb525 client along with the names of the
+target client and services principals. It checks the conversion
+against the authorization information supplied in it's configuration
+file, krb525.conf, and if permissable, decrypts the ticket, changes the
+client and/or service names, re-encrypts the ticket and sends it back
+to the client.
+.PP
+Normally, krb525d is invoked out of inetd(8).  
+This is done by adding a line to the inetd.conf file which looks like
+this:
+
+krb525d	stream	tcp	nowait	root	/krb5/sbin/krb525d	krb525d
+
+.SH OPTIONS
+.TP
+\fB\-c\fP \fIconfig_file\fP
+specifies the location of the krb525.conf(5) file to use. Normally it
+is in the etc directory of the Kerberos 5 installation tree (e.g.
+.BR /krb5/etc/krb525.conf ).
+.TP
+.B \-d
+specifies that the
+.I krb525d
+daemon should get all the needed service keys from the Kerberos 5
+database. The code to read the database must be included at compile
+time, in which case this is the default.
+.TP
+.B \-k
+specifies that the
+.I krb525d
+daemon should get all the needed services keys from the keytab
+file. This is the default if the database reading code was not
+included at compile time.
+.TP
+\fB\-s\fP \fIservice_name\fP
+specifies the name of the service principal that the
+.Ikrb525d
+daemon expects to be used by the client to authenticate to it. By
+default this will be
+.BR krb525/<hostname> ,
+where
+.B <hostname>
+is the name of the host that
+.I krb525d
+is running on. Note that krb525d will always get this key from the
+local keytab file.
+.TP
+\fB\-t\fP \fIkeytab_name\fP
+specifies the name of the keytab file to be used by
+.IR krb525d .
+.PP
+.SH SEE ALSO
+krb525(1)
+krb525d(8)

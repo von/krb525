@@ -3,9 +3,13 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.3 1997/09/17 20:43:22 vwelch Exp $
+ * $Id: client.c,v 1.4 1997/09/25 19:28:42 vwelch Exp $
  *
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "krb5.h"
 #include "com_err.h"
@@ -35,10 +39,7 @@ extern char *optarg;
 #include "auth_con.h"
 
 
-#define KRB525_HOST		"computer.ncsa.uiuc.edu"	/* XXX */
-
-
-#define error_exit()	exit_code = 1; goto cleanup;
+#define error_exit()	{ exit_code = 1; goto cleanup; }
 
 
 static krb5_error_code get_creds_with_keytab(krb5_context,
@@ -56,10 +57,6 @@ static int get_guid(char *,
 		    uid_t *,
 		    gid_t *);
 
-static krb5_error_code get_principal_from_ccache(krb5_context,
-						 char *,
-						 char **,
-						 krb5_principal *);
 
 
 /* Globals */
@@ -77,6 +74,8 @@ char *argv[];
     krb5_context context;
     krb5_auth_context auth_context = 0;
 
+    krb5_data default_realm;
+
     krb5_data recv_data;
     krb5_data cksum_data;
     krb5_error_code retval;
@@ -85,7 +84,9 @@ char *argv[];
     int exit_code = 0;
 
     /* Where the krb525d daemon is running */
-    char *krb525_host = KRB525_HOST;
+    char *krb525_host = NULL;
+    char **krb525_hosts = NULL;
+    int krb525_host_num = 0;
     int krb525_port = -1;
 
     /* Credentials for authenticating to krb525d */
@@ -95,14 +96,16 @@ char *argv[];
     krb5_creds krb525_creds;
 
     /* Credentials we are converting */
+    char *cname = NULL;
+    char *sname = NULL;
+    krb5_principal cprinc, sprinc;
     char *target_cname = NULL;
     char *target_sname = NULL;
     krb5_principal target_cprinc, target_sprinc;
-    krb5_data *target_realm;
     krb5_creds target_creds;
 
-    /* Information about target user */
-    char *target_user;
+    /* Information about who should own target cache */
+    char *cache_owner = NULL;
     uid_t uid = -1;
     gid_t gid = -1;
 
@@ -113,6 +116,7 @@ char *argv[];
 
     /* Where our credentials are */
     char *source_cache_name = NULL;
+    krb5_ccache source_ccache = NULL;
     int use_keytab = 0;
     char *keytab_name = NULL;
 
@@ -128,33 +132,33 @@ char *argv[];
 
 
 
-    /* Process options */
-    progname = argv[0];
+    /* Get our name, removing preceding path */
+    if (progname = strchr(argv[0], '/'))
+	progname++;
+    else
+	progname = argv[0];
 
-    while ((arg = getopt(argc, argv, "c:g:h:km:o:p:s:t:u:v")) != EOF)
+    /* Process arguments */
+    while ((arg = getopt(argc, argv, "c:C:g:h:i:ko:p:s:S:t:u:v")) != EOF)
 	switch (arg) {
 	case 'c':
-	    source_cache_name = optarg;
+	    cname = optarg;
 	    break;
 
-	case 'g':
-	    gid = atoi(optarg);
-	    if (gid == 0) {
-		fprintf(stderr, "Illegal gid value \"%s\"\n", optarg);
-		arg_error++;
-	    }
+	case 'C':
+	    target_cname = optarg;
 	    break;
 
 	case 'h':
 	    krb525_host = optarg;
 	    break;
 
-	case 'k':
-	    use_keytab = 1;
+	case 'i':
+	    source_cache_name = optarg;
 	    break;
 
-	case 'm':
-	    krb525_cname = optarg;
+	case 'k':
+	    use_keytab = 1;
 	    break;
 
 	case 'o':
@@ -170,7 +174,11 @@ char *argv[];
 	    break;
 
 	case 's':
-	    krb525_sname = optarg;
+	    sname = optarg;
+	    break;
+
+	case 'S':
+	    target_sname = optarg;
 	    break;
 
 	case 't':
@@ -178,11 +186,7 @@ char *argv[];
 	    break;
 
 	case 'u':
-	    uid = atoi(optarg);
-	    if (uid == 0) {
-		fprintf(stderr, "Illegal uid value \"%s\"\n", optarg);
-		arg_error++;
-	    }
+	    cache_owner = optarg;
 	    break;
 
 	case 'v':
@@ -194,14 +198,10 @@ char *argv[];
 	    break;
 	}
 
-    if ((argc - optind) != 1)
-	arg_error++;
-
-    if (source_cache_name && use_keytab) {
-	fprintf(stderr, "%s: Can't specify both keytab (-k) and cache (-c)\n",
-		progname);
-	arg_error++;
-    }
+    if ((argc - optind) != 0)
+	fprintf(stderr,
+		"%s: Ignoring extra command line options starting with %s\n",
+		progname, argv[optind]);
 
     if (keytab_name && !use_keytab) {
 	fprintf(stderr,
@@ -210,37 +210,32 @@ char *argv[];
 	arg_error++;
     }
 
+    if (use_keytab && !cname) {
+	fprintf(stderr,
+		"%s: Need to specify client name (-c) when using keytab (-k)\n",
+		progname);
+	arg_error++;
+    }
+
     if (arg_error) {
-	fprintf(stderr, "%s: [<options>] <target principal>\n"
+	fprintf(stderr, "%s: [<options>]\n"
 		" Options are:\n"
-		"   -c <cache name>          Specify cache name to use\n"
-		"   -g <gid>                 Specify gid to own target cache\n"
+		"   -c <client name>         Client for credentials to convert\n"
+		"   -C <target client>       Client to convert to\n"
 		"   -h <server host>         Host where server is running\n"
-		"   -k                       Use keytab\n"
-		"   -m <my name>             Specify my principal name\n"
+		"   -i <input cache>         Specify cache to get credentials from\n"
+		"   -k                       Use key from keytab to authenticate\n"
 		"   -o <output cache>        Cache to write credentials out to\n"
 		"   -p <server port>         Port where server is running\n"
-		"   -s <service name>        Service name of server\n"
+		"   -s <service name>        Service for credentials to convert\n"
+		"   -S <target service>      Service to convert to\n"
 		"   -t <keytab file>         Keytab file to use\n"
-		"   -u <uid>                 Specify uid to own target cache\n"
+		"   -u <username>            Specify owner of output cache\n"
 		"   -v                       Verbose mode\n",
 		progname);
 	exit(1);
     }
 
-    if (verbose) {
-	if (use_keytab) {
-	    if (keytab_name)
-		printf("Using keytab file %s\n", keytab_name);
-	    else
-		printf("Using default keytab file\n");
-	} else {
-	    if (source_cache_name)
-		printf("Using ccache file %s\n", source_cache_name);
-	    else
-		printf("Using default ccache\n");
-	}
-    }
 
     /* Kerberos initialization */
     if (verbose)
@@ -258,58 +253,152 @@ char *argv[];
 	error_exit();
     }
 
-    
-    /* Parse target principal name */
-    target_user = argv[optind++];
+    /*
+     * Get our cache ready for use if appropriate.
+     */
+    if (!use_keytab) {
+	if (source_cache_name)
+	    retval = krb5_cc_resolve(context, source_cache_name,
+				     &source_ccache);
+	else
+	    retval = krb5_cc_default(context, &source_ccache);
 
-    if (retval = krb5_parse_name(context, target_user, &target_cprinc)) {
-	com_err(progname, retval, "while parsing target name");
+	if (retval) {
+	    com_err(progname, retval, "resolving source cache %s",
+		    (source_cache_name ? source_cache_name : "(default)"));
+	    error_exit();
+	}
+    }
+
+    /*
+     * Get our default realm
+     */
+    if (retval = krb5_get_default_realm(context, &(default_realm.data))) {
+	com_err(progname, retval, "resolving default realm");
 	error_exit();
     }
 
-    target_realm = krb5_princ_realm(context, target_cprinc);
+    default_realm.length = strlen(default_realm.data);
 
-    if (retval = krb5_unparse_name(context, target_cprinc, &target_cname)) {
-	com_err(progname, retval, "while unparsing target principal");
-	error_exit();
+
+    /*
+     * If neither a target client name or target service name was
+     * given, then target ticket is username for krbtgt
+     */
+    if (!target_cname && !target_sname) {
+	struct passwd *pwd;
+
+	pwd = getpwuid(geteuid());
+
+	if (!pwd) {
+	    perror("Password entry lookup failed");
+	    error_exit();
+	}
+
+	target_cname = strdup(pwd->pw_name);
     }
 
-    if ((uid == -1) && get_guid(target_user, &uid, &gid)) {
-	fprintf(stderr, "Could not resolve uid and gid for %s\n", target_user);
-	perror("User lookup");
+
+    /*
+     * Parse our client name. If none was given then use default for
+     * our cache.
+     */
+    if (!use_keytab) {
+	if (retval = krb5_cc_get_principal(context, source_ccache, &cprinc)) {
+	    com_err(progname, retval, "while getting principal from cache");
+	    error_exit();
+	}
+    } else {
+	/* Client name must be provided with keytab. */
+	if (retval = krb5_parse_name (context, cname, &cprinc)) {
+	 com_err (progname, retval, "when parsing name %s", cname);
+	 error_exit();
+	}
+    }
+ 	
+    if (retval = krb5_unparse_name(context, cprinc, &cname)) {
+	com_err (progname, retval, "when unparsing client");
 	error_exit();
     }
 
     /*
-     * Parse target service name. If none was given then use krbtgt/<realm>
+     * Parse service name. If none was given then use krbtgt/<realm>@<realm>
      */
-    if (target_sname == NULL) {
+    if (sname == NULL) {
 	if (retval = krb5_build_principal(context,
-					  &target_sprinc,
-					  target_realm->length,
-					  target_realm->data,
+					  &sprinc,
+					  default_realm.length,
+					  default_realm.data,
 					  KRB5_TGS_NAME,
-					  target_realm->data,
+					  default_realm.data,
 					  0)) {
 	    com_err (progname, retval,
-		     "when build target service principal \"%s/%s\"",
-		     target_sname, target_realm->data);
+		     "building default service principal");
 	    error_exit();
 	}
     } else {
-	/* Target service specified */
-	if (retval = krb5_parse_name (context, target_sname,
-				      &target_sprinc)) {
-	 com_err (progname, retval, "when parsing name %s", target_sname);
+	/* Service specified */
+	if (retval = krb5_parse_name (context, sname, &sprinc)) {
+	 com_err (progname, retval, "when parsing name %s", sname);
 	 error_exit();
 	}
     }
    
-    if (retval = krb5_unparse_name(context, target_sprinc, &target_sname)) {
-	 com_err (progname, retval, "when unparsing target service");
+    if (retval = krb5_unparse_name(context, sprinc, &sname)) {
+	 com_err (progname, retval, "when unparsing service");
 	 error_exit();
     }
 
+    /*
+     * Parse our target client name. If none was given then use our
+     * original client name.
+     */
+    if (!target_cname)
+	target_cname = cname;
+
+    /* Client name must be provided with keytab. */
+    if (retval = krb5_parse_name (context, target_cname, &target_cprinc)) {
+	com_err (progname, retval, "when parsing name %s", target_cname);
+	error_exit();
+    }
+ 	
+    if (retval = krb5_unparse_name(context, target_cprinc, &target_cname)) {
+	com_err (progname, retval, "when unparsing client");
+	error_exit();
+    }
+
+    /*
+     * Parse target service name. If none was given then use our original
+     * service.
+     */
+    if (target_sname == NULL)
+	target_sname = sname;
+
+    /* Service specified */
+    if (retval = krb5_parse_name (context, target_sname, &target_sprinc)) {
+	com_err (progname, retval, "when parsing name %s", target_sname);
+	error_exit();
+    }
+   
+    if (retval = krb5_unparse_name(context, target_sprinc, &target_sname)) {
+	com_err (progname, retval, "when unparsing service");
+	error_exit();
+    }
+
+
+    if (verbose) {
+	printf("Ticket to convert is %s for %s\n", cname, sname);
+	printf("Target ticket is %s for %s\n", target_cname, target_sname);
+    }
+
+    /*
+     * Ok, do we actually have anything to do?
+     */
+    if (krb5_principal_compare(context, cprinc, target_cprinc) &&
+	krb5_principal_compare(context, sprinc, target_sprinc)) {
+	fprintf(stderr, "%s: Nothing to do\n", progname);
+	error_exit();
+    }
 
     /*
      * Figure out our target cache. If we were given one then use
@@ -336,68 +425,72 @@ char *argv[];
 
 	if (strncmp(target_cache_name, "FILE:", 5) == 0)
 	    target_cache_name += 5;
-
-	if (verbose)
-	    printf("Target cache is %s\n", target_cache_name);
     }
 
-	
     /*
-     * Parse krb525 client name. If no client name was provided then get
-     * it from the credentials cache.
+     * Get and parse client name to authenticate to krb525d with. If none
+     * specified then use our original client name.
      */
-    if (krb525_cname == NULL) {
-	if (retval = get_principal_from_ccache(context,
-					       source_cache_name,
-					       &krb525_cname,
-					       &krb525_cprinc)) {
-	    com_err (progname, retval, "- Can't get my principal name");
+    if (krb525_cname == NULL)
+	krb525_cname = cname;
+
+    if (retval = krb5_parse_name (context, krb525_cname, &krb525_cprinc)) {
+	com_err (progname, retval, "when parsing name %s", krb525_cname);
+	error_exit();
+    }
+
+    if (retval = krb5_unparse_name(context, krb525_cprinc, &krb525_cname)) {
+	com_err (progname, retval, "when unparsing krb525 client principal");
+	error_exit();
+    }
+
+    /*
+     * If we're creating a new cache, figure out who should own it. If a
+     * user was specified on the command line then use that user.
+     */
+    if (cache_owner) {	
+	if (get_guid(cache_owner, &uid, &gid)) {
+	    fprintf(stderr,
+		    "Could not resolve uid and gid for %s\n", cache_owner);
+	    perror("User lookup");
 	    error_exit();
 	}
-    
     } else {
-	if (retval = krb5_parse_name (context, krb525_cname, &krb525_cprinc)) {
-	    com_err (progname, retval, "when parsing name %s", krb525_cname);
-	    error_exit();
+	/*
+	 * If we're using a keytab, or if the target client differs from
+	 * the original client then try to set the ownership to the
+	 * target client, but fail silently.
+	 *
+	 * Not 100% sure this is what is desired, but we'll try it for now.
+	 */
+	if (use_keytab || strcmp(cname, target_cname)) {
+	    char *realm;
+
+	    cache_owner = strdup(target_cname);
+
+	    if (realm = strchr(cache_owner, '@'))
+		*realm = '\0';
+	    
+	    if (get_guid(cache_owner, &uid, &gid)) {
+		/* Fail silently */
+		uid = -1;
+		gid = -1;
+	    }
 	}
-
-	if (retval = krb5_unparse_name(context, krb525_cprinc, &krb525_cname)) {
-	    com_err (progname, retval, "when unparsing krb525 client principal");
-	    error_exit();
-	}
-    }
-
-    if (verbose)
-	printf("My principal name is %s\n", krb525_cname);
-
-    /* Parse krb525 server name */
-    if (retval = krb5_sname_to_principal(context, krb525_host, krb525_sname,
-					 KRB5_NT_SRV_HST, &krb525_sprinc)) {
-	com_err(progname, retval, "while creating server name for %s/%s",
-		krb525_sname, krb525_host);
-	error_exit();
-    }
-
-    if (retval = krb5_unparse_name(context, krb525_sprinc, &krb525_sname)) {
-	com_err (progname, retval, "when unparsing krb525 service principal");
-	error_exit();
     }
  
     /* Get credentials to converted */
-    if (verbose)
-	printf("Getting credentials to convert (%s for %s)\n",
-	       krb525_cname, target_sname);
-
     if (use_keytab)
-	retval = get_creds_with_keytab(context, krb525_cprinc, target_sprinc,
+	retval = get_creds_with_keytab(context, cprinc, sprinc,
 				       keytab_name, &target_creds);
     else
-	retval = get_creds_with_ccache(context, krb525_cprinc, target_sprinc,
+	retval = get_creds_with_ccache(context, cprinc, sprinc,
 				       source_cache_name, &target_creds);
 
     if (retval) {
-	com_err (progname, retval, "when getting initial ticket (%s for %s)",
-		 krb525_cname, target_sname);
+	/* Detailed error message already printed */
+	fprintf(stderr, "Couldn't get ticket - %s for %s",
+		cname, sname);
 	error_exit();
     }
 
@@ -413,28 +506,74 @@ char *argv[];
 	}
     }
 
-    /* Connect to the server */
-    if (verbose)
-	printf("Connecting to krb525d (%s port %d)\n",
+    /*
+     * Figure out hostname(s) of server(s). If user supplied a hostname, then
+     * use that. Otherwise try all the Kerberos servers for this realm.
+     */
+    if (krb525_host) {
+	/* User provided a hostname, so build list from that */
+	krb525_hosts = (char **) malloc( 2 * sizeof(char *));
+
+	if (!krb525_hosts) {
+	    perror("malloc() failed");
+	    error_exit();
+	}
+
+	krb525_hosts[0] = strdup(krb525_host);
+	krb525_hosts[1] = NULL;
+
+    } else {
+	if (retval = krb5_get_krbhst(context, &default_realm, &krb525_hosts)) {
+	    com_err(progname, retval,
+		    "getting list of kerberos servers for realm %s",
+		    default_realm.data);
+	    error_exit();
+	}
+
+	if (!krb525_hosts || !krb525_hosts[0]) {
+	    fprintf(stderr, "Couldn't figure out name of kerberos server host");
+	    error_exit();
+	}
+    }
+
+    krb525_host_num = 0;
+
+    while (krb525_host = krb525_hosts[krb525_host_num]) {
+	/* Connect to the server */
+	if (verbose)
+	printf("Trying to connect to krb525d on %s port %d\n",
 	       krb525_host, krb525_port);
 
-    if ((sock = connect_to_server(krb525_host, krb525_port)) < 0) {
-	perror(netio_error);
+	if ((sock = connect_to_server(krb525_host, krb525_port)) > 0 )
+	    break; /* Success */
+
+	if (verbose)
+	    printf("Connection failed: %s\n", strerror(errno));
+
+	krb525_host_num++;
+    }
+
+    if (sock < 0) {
+	fprintf(stderr, "Couldn't connect to krb525d.\n");
 	error_exit();
     }
 
-    /* Get addresses of connection ends */
-    namelen = sizeof(rsin);
-    if (getpeername(sock, (struct sockaddr *) &rsin, &namelen) < 0) {
-	perror("getpeername");
-	close(sock);
+    if (verbose)
+	printf("Connected to %s\n", krb525_host);
+
+    /*
+     * Parse service name to authenticate with. (Default is
+     * KRB525_SERVICE/<hostname>)
+     */
+    if (retval = krb5_sname_to_principal(context, krb525_host, krb525_sname,
+					 KRB5_NT_SRV_HST, &krb525_sprinc)) {
+	com_err(progname, retval, "while creating server name for %s/%s",
+		krb525_sname, krb525_host);
 	error_exit();
     }
 
-    namelen = sizeof(lsin);
-    if (getsockname(sock, (struct sockaddr *) &lsin, &namelen) < 0) {
-	perror("getsockname");
-	close(sock);
+    if (retval = krb5_unparse_name(context, krb525_sprinc, &krb525_sname)) {
+	com_err (progname, retval, "when unparsing krb525 service principal");
 	error_exit();
     }
 
@@ -451,14 +590,15 @@ char *argv[];
 				       source_cache_name, &krb525_creds);
 
     if (retval) {
-	com_err (progname, retval, "when getting credentials (%s for %s/%s)",
-		 krb525_cname, krb525_sname, krb525_host);
+	/* Detailed error message already printed */
+	fprintf(stderr, "Couldn't get ticket - %s for %s",
+		 krb525_cname, krb525_sname);
 	error_exit();
     }
     
     /* Authenticate to server */
     if (verbose)
-	printf("Authenticating to %s\n", krb525_host);
+	printf("Authenticating...\n");
 
     /*
      * I have no idea what the cksum_data stuff is for or why it uses
@@ -480,6 +620,7 @@ char *argv[];
 	com_err(progname, retval, "while using sendauth");
 	error_exit();
     }
+
     if (retval == KRB5_SENDAUTH_REJECTED) {
 	/* got an error */
 	printf("sendauth rejected, error reply is:\n\t\"%*s\"\n",
@@ -494,6 +635,21 @@ char *argv[];
 
     if (verbose)
 	printf("sendauth succeeded\n");
+
+    /* Get addresses of connection ends */
+    namelen = sizeof(rsin);
+    if (getpeername(sock, (struct sockaddr *) &rsin, &namelen) < 0) {
+	perror("getpeername");
+	close(sock);
+	error_exit();
+    }
+
+    namelen = sizeof(lsin);
+    if (getsockname(sock, (struct sockaddr *) &lsin, &namelen) < 0) {
+	perror("getsockname");
+	close(sock);
+	error_exit();
+    }
 
     /* Prepare to encrypt */
     if (retval = setup_auth_context(context, auth_context, &lsin, &rsin,
@@ -547,7 +703,8 @@ char *argv[];
 	}
 
 	if (verbose)
-	    printf("New ticket read from server\n");
+	    printf("New ticket read from server. Storing in %s\n",
+		   target_cache_name);
 
 	/* Put new ticket data into credentials */
 	target_creds.ticket.data = recv_data.data;
@@ -558,12 +715,28 @@ char *argv[];
 
 	/* Ok now store the ticket */
 
-	/* XXX - when should we initialize? */
-	if (initialize_cache &&
-	    (retval = krb5_cc_initialize(context, target_ccache,
-					 target_cprinc))) {
-	    com_err(progname, retval, "initializing cache");
-	    error_exit();
+	/*
+	 * Decide if we initialize the cache. If we came from a keytab or
+	 * we changed clients, or the target cache != source cache then
+	 * initialize the cache.
+	 *
+	 * XXX - Not 100% sure this is right.
+	 */
+	if (use_keytab ||
+	    strcmp(cname, target_cname) ||
+	    !source_cache_name ||
+	    source_cache_name && strcmp(source_cache_name, target_cache_name))
+	    initialize_cache = 1;
+
+	if (initialize_cache) {
+	    if (verbose)
+		printf("Initializing cache\n");
+
+	    if (retval = krb5_cc_initialize(context, target_ccache,
+					 target_cprinc)) {
+		com_err(progname, retval, "initializing cache");
+		error_exit();
+	    }
 	}
 
 	if (retval = krb5_cc_store_cred(context, target_ccache, &target_creds)) {
@@ -571,14 +744,14 @@ char *argv[];
 	    error_exit();
 	}
 
+	if (verbose && (uid != -1))
+	    printf("Changing owner of credentials cache to %s\n",
+		   cache_owner);
+
 	if (chown(target_cache_name, uid, gid)) {
 	    perror("Setting owner of credentials cache");
 	    error_exit();
 	}
-	    
-
-	if (verbose)
-	    printf("Credentials stored in %s\n", target_cache_name);
 
 	break;
 
@@ -590,7 +763,7 @@ char *argv[];
 	    error_exit();
 	}
 
-        printf(recv_data.data);
+        printf("%s: %s\n", progname, recv_data.data);
 	break;
 
     default:
@@ -599,7 +772,13 @@ char *argv[];
 
 cleanup:
     /* XXX - lots of cleanup should be done here */
-    close(sock);
+
+    if (krb525_hosts)
+	krb5_free_krbhst(context, krb525_hosts);
+
+    if (sock > 0)
+	close(sock);
+
     exit(resp_status);
 }
 
@@ -725,43 +904,6 @@ get_guid(char *username,
     *gid = passwdent->pw_gid;
 
     return 0;
-}
-
-
-
-/*
- * Get the default principal from a cache.
- */
-static krb5_error_code
-get_principal_from_ccache(krb5_context context,
-			  char *cache_name,
-			  char **princ_name,
-			  krb5_principal *princ)
-{
-    krb5_ccache		ccache;
-    krb5_error_code	retval;
-
-
-    if (!cache_name)
-	retval = krb5_cc_default(context, &ccache);
-    else
-	retval = krb5_cc_resolve(context, cache_name, &ccache);
-
-    if (retval) {
-	com_err(progname, retval, "resolving cache name %s",
-		(cache_name ? cache_name : "(default)"));
-	return retval;
-    }
-
-    if (retval = krb5_cc_get_principal(context, ccache, princ)) {
-	com_err(progname, retval, "in krb5_cc_get_principal()");
-	return retval;
-    }
-
-    if (retval = krb5_unparse_name(context, *princ, princ_name))
-	 com_err (progname, retval, "in krb5_unparse_name()");
-
-    return retval;
 }
 
 

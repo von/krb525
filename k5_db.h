@@ -1,7 +1,7 @@
 /*
  * k5_db.h
  *
- * $Id: k5_db.h,v 1.2 1997/09/17 16:57:58 vwelch Exp $
+ * $Id: k5_db.h,v 1.3 1997/09/25 19:28:47 vwelch Exp $
  */
 
 #ifndef __K5_DB_H
@@ -19,7 +19,7 @@ extern void k5_db_close(krb5_context);
 
 krb5_error_code k5_db_get_key(krb5_context,
 			      krb5_principal,
-			      krb5_keyblock *,
+			      krb5_keyblock **,
 			      krb5_enctype);
 
 krb5_error_code k5_db_get_entry(krb5_context,

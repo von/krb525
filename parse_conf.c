@@ -3,8 +3,12 @@
  *
  * Routines to read and parse a configuration file.
  *
- * $Id: parse_conf.c,v 1.2 1997/09/17 16:57:59 vwelch Exp $
+ * $Id: parse_conf.c,v 1.3 1997/09/25 19:28:53 vwelch Exp $
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <stdio.h>
 #include <string.h>

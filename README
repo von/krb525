@@ -1,0 +1,171 @@
+
+------------
+ABOUT KRB525
+------------
+
+krb525 is a tool for converting arbitrary Kerberos 5 tickets from one
+client to another. It consists of a client program (krb525) and a daemon
+program (krb525d). The daemon program needs access to services keys for
+tickets to be converted. It can get access to these keys by either running
+on a KDC and accessing the Kerberos 5 database directly or by getting them
+from a keytab file. The daemon has a configuration file (krb525.conf)
+which specifies the conversions it is allowed to make.
+
+Please note this is software is UNOFFICAL and is not endorsed by
+MIT.
+
+This software is provided "AS IS". See the section on COPYRIGHT for
+details.
+
+The latest version of krb525 is available at:
+
+ftp://ftp.ncsa.uiuc.edu/aces/kerberos/
+
+--------------
+USES of KRB525
+--------------
+
+There are three intended uses for krb525: converting cross-realm
+credentials to local credentials, acting like a Kerberos su utility in
+allowing authorized users access to tickets for other principals, and
+granting tickets to users authenticated via some means besides
+Kerberos.
+
+--
+Converting cross-realm credentials:
+
+The intention here is that you have the same user with accounts in two
+different Kerberos realms - e.g. jsmith@REALM.A.EDU and
+johns@REALM.B.EDU. Assuming cross-realm authentication has been 
+setup, the Kerberos 5 .k5login file give access to the unix accounts
+seemlessly, there may be other services that work with Kerberos
+tickets don't respect the .k5login file, for example the Andrew File
+System.
+
+Let's say that John Smith logs into REALM.B.EDU from
+REALM.A.EDU. Since cross-realm has been done and he has correctly set
+up his .k5login with an entry for jsmith@REALM.A.EDU he is able to
+seemlessly log into the account johns. Assuming he forwards his
+tickets he will now have a Kerberos ticket-granting-ticket, however it
+will be for the remote user jsmith@REALM.A.EDU and not the local user
+johns@REALM.B.EDU.
+
+This normally would not cause any problems, but let's say REALM.B.EDU
+was running the Andrew File System (AFS). Simply put, AFS uses
+Kerberos tickets to control access to files, but does not respect the
+.k5login file. What this means is that the user John Smith now finds
+himeself logged into REALM.B.EDU but able to access his files since as
+far as AFS is concerned his Kerberos identity is for some unknown user
+jsmith@REALM.A.EDU and not the local user johns@REALM.B.EDU.
+
+Obviously there are several ways to work this situation. First the
+user could just run kinit and get a ticket for the local realm. This
+is fine, but breaks the model of single sign-on that we are trying to
+build. Another option is to add the remote user jsmith@REALM.A.EDU to
+the local AFS cell and then the user could add this user to all their
+access control lists for their files. Again this would work, but we
+saw it as too high an administrative overhead both for the AFS
+administrators having to create addition user enteries and the user
+having to manage their access control lists.
+
+So our choice was to have the krb525 utility convert their current
+ticket-granting-ticket (jsmith@REALM.A.EDU for
+krbtgt/REALM.B.EDU@REALM.A.EDU) into a ticket for the local pricipal
+(johns@REALM.B.EDU for krbtgt/REALM.B.EDU@REALM.B.EDU). All this
+entails is that the krb525.conf configuration file needs a client
+mapping stating that the user jsmith@REALM.A.EDU is allowed to convert
+their tickets to those of user johns@REALM.B.EDU. Then when the user
+logs in they run krb525 (or it is run automatically for them somehow)
+and then they have local credentials.
+
+--
+Kerberos su utility:
+
+krb525 allowes authorized principals to get tickets for other client
+principals that they are listed as being authorized to. This is
+generally handy for changing to clients who do not have a password or
+whose key is not available easily.
+
+--
+Granting Kerberos tickets
+
+In our case we had users who were strongly authenticated, but by a
+means other than Kerberos and they needed Kerberos tickets. Since they
+were all on a tightly controled machine we simply created a special
+client principal called "converter" and placed it's key in a keytab
+file on that machine. krb525, running as root, could then use the
+keytab file to authenticate to krb525d and request a ticket for the
+user in question.
+
+This involves the princpal "converter" having client mappings in the
+krb525.conf file in order to convert it's tickets to those of the
+target user.
+
+-------------------------
+Building and Installation
+-------------------------
+
+See the files BUILDING and INSTALLATION.
+
+--------
+SECURITY
+--------
+
+The following security features are built into krb525/krb525d:
+
+ -The client and service authenticate using Kerberos 5 and use
+  Kerberos 5 to sign and/or encrypt all sensitive parts of their
+  communication.
+
+ -The host that the client is connecting from can be restricted using
+  the allowed_hosts list in krb525.conf. Note that the host is
+  determined from the IP address in the incoming packets and not from
+  any real authentication mechanism.
+
+ -The client that can connect are restricted using the allow_clients
+  list in krb525.conf.
+
+ -Any client or service conversions are limited by the client_mappings
+  and server_mappins lists in krb525.conf.
+
+ -All error messages returned from the krb525d daemon to the krb525
+  client are intentionally vague to prevent someone from gleaming
+  informatino about the contents of the krb525.conf file.
+
+ -When getting service keys from the Kerberos 5 database the krb525d
+  daemons checks the validity of all outgoing tickets in the same
+  manner the KDC does. This includes:
+    -Check to make sure none of the principals are expired.
+    -Checking to make sure the client's password has not expired or
+     requires changing.
+    -Checking to make	sure all of the ticket attributes (postdated,
+     proxable, forwardable, etc.) are legal for the client and server.
+    -Checking to make sure the client and server are not locked out
+     (all tickets are dissallowed).
+
+---------
+COPYRIGHT
+---------
+
+The documentation and source code for the krb525 package is
+copyrighted by the National Center for Supercomputing Applications
+(NCSA). Permission to use, copy, modify and distribute this software
+and its documentation is hereby granted, provided that both the
+copyright notice and this permission notice appear in all copies of
+the software, derivative works or modified versions, and any portions
+thereof, and that both notices appear in supporting documentation.
+
+NCSA ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS" CONDITION AND
+DISCLAIMS ANY LIABILITY OF ANY KIND FOR ANY DAMAGES WHATSOEVER
+RESULTING FROM THE USE OF THIS SOFTWARE.
+
+------
+AUTHOR
+------
+
+krb525 was written by Von Welch (vwelch@ncsa.uiuc.edu). All questions,
+comments and bug reports should be directed to him.
+
+----
+
+$Id: README,v 1.1 1997/09/25 19:28:36 vwelch Exp $

@@ -3,8 +3,12 @@
  *
  * Functions dealing with Kerberos auth_context.
  *
- * $Id: auth_con.c,v 1.1 1997/09/08 15:41:32 vwelch Exp $
+ * $Id: auth_con.c,v 1.2 1997/09/25 19:28:41 vwelch Exp $
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "auth_con.h"
 

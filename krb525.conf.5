@@ -1,0 +1,184 @@
+.\"
+.\" krb525.conf man page
+.\"
+.\" $Id: krb525.conf.5,v 1.1 1997/09/25 19:28:50 vwelch Exp $
+.\"
+.TH KRB525.CONF 5
+.SH NAME
+krb525.conf \- Kerberos krb525d daemon configuration file
+.SH DESCRIPTION
+.I krb525d.conf
+contains configuration information needed by the krb525d(8) daemon. This
+includes access control information in regards to ticket conversion it
+is allowd to perform. In is normally localed in the
+.B etc
+directory under the Kerberos 5 install directory (e.g.
+.BR /krb5/etc/krb5.conf )
+.PP
+The 
+.I krb525.conf
+file uses the following format:
+.sp
+.nf
+.in +1i
+item1 = value1 ;
+item2 item3 = value2 ;
+item4 item5 = value3 value4 value 5 ;
+
+item6 = {
+	subitem1 = subvalue1 subvalue2 ;
+	subitem2 = subvalue3 ;
+}
+
+item7 item8 = {
+	subitem1 = subvalue1 ;
+}
+.in -1i
+.fi
+.sp
+All strings and special characters (
+.BR = ,
+.BR { ,
+.BR } ,
+.B ;
+) must be delimited by whitespace or a carriage return. The wildcard
+characters 
+.B *
+and 
+.B ?
+are recognized and used as in the Unix csh. Any principal names
+without a realm name are assumed to be in the default realm. A pound
+character (
+.B #
+) denotes a comment and causes all further text up to a carriage
+return to be ignored.
+.PP
+The following items are currently used in the 
+.I krb525.conf
+file:
+.IP allowed_clients
+This item should be followed by a list of values which are the names
+of the client principals allowed to connect and use the krb525d
+services.
+
+.IP client_mappings
+This items should be followed by a list of "<client> = <target client>
+;" mappings. These represent legal conversions of clients that the
+krb525d daemon may perform in a ticket.
+
+.IP server_mappings
+This items should be followed by a list of "<service> = <target
+service> ;" mappings. These represent legal conversions of services
+that the krb525d daemon may perform in a ticket.
+
+.IP allowed_hosts
+This item should be followed by a list of values which are the names
+of hosts from which connections may be made to the krb525d
+daemon. These names may be either the IP dot address (e.g. 10.0.0.1)
+or the full hostname (e.g. some.host.net).
+
+.PP 
+In addition there may be listings of the form:
+.sp
+.nf
+.in +1i
+<client> = {
+	target_clients = client1 client2 client3... ;
+	target_servers = server1 server2 server3... ;
+	allowed_hosts = host1 host2 host3... ;
+}
+.in -1i
+.fi
+.sp
+Where
+.B <client>
+is a client principal name. This allows for a more
+specifc entry for a particular client. If such an entry exists for a
+client then all other enteries are ignored when checking a request for
+that client..
+.PP
+.SH EXAMPLES
+.sp
+.nf
+#
+# Example krb525.conf file
+#
+# Anything after a '#' is a comment
+#
+
+allowed_hosts =
+	10.1.*
+	*.somewhere.com
+	somehost.domain.net
+	;
+
+allowed_clients =
+	rsmith@OTHERDOMAIN.COM
+	jtaylor@OTHERDOMAIN.COM
+	joe
+	john/admin
+	;
+
+client_mappings = {
+	rsmith@OTHERDOMAIN.COM = roberts ;
+	jtaylor@OTHERDOMAIN.COM = jtaylor ;
+	joe = tapeadmin ;
+}
+
+john/admin = {
+	target_clients = */foo ;
+	allowed_hosts = adminhost.somewhere.com ;
+}
+
+.fi
+.sp
+In the above example the two principals
+.BR joe ,
+and
+.B john/admin
+in the local realm are allowed to connect to krb525d, plus the principals
+.B rsmith 
+and
+.B jtaylor
+from the realm
+.BR OTHERDOMAIN.COM .
+.PP
+.B john/admin
+has their own entry which allows their tickets to be converted to any
+principal with an instance of 
+.B foo.
+They are also only allowed to make connections from the host 
+.BR adminhost.somewhere.com .
+.PP
+The remainder of the users are allowed to connect from any host with
+an IP address begining with "10.1.", from any host in the domain
+somewhere.com or from the host somehost.domain.net.
+.PP
+The client_mappings section allows 
+.B rsmith@OTHERDOMAIN.COM
+and
+.B jtaylor@OTHERDOMAIN.COM
+to convert the clients in the Kerbeos tickets to those of the local principals
+.B roberts
+and
+.B jtaylor
+respectively. Assuming the cross-realm authentication is set up
+between the local realm the the realm OTHERDOMAIN.COM and the
+appropriate .k5login files are in place, this would allow these users
+not only the ability to log into the local realm, but to use the
+krb525(1) client to get tickets for the local principals. This can allow them
+further access to systems that use Kerberos tickets, but do not
+respect the .k5login file (e.g. the Andrew File System).
+.PP
+The user
+.B joe
+is allowed to convert the client on their tickets to the principal
+.BR tapeadmin .
+This can be useful if someone needs to have a ticket for a particular
+principal but does not, for whatever reason, have the principal's
+password or key.
+.PP
+.SH SEE ALSO
+krb525(1)
+krb525d(8)
+

@@ -1,87 +1,102 @@
 dnl
 dnl configure.in for krb525
 dnl
-dnl $Id: configure.in,v 1.1 1997/09/08 15:41:32 vwelch Exp $
+dnl $Id: configure.in,v 1.2 1997/09/25 19:28:43 vwelch Exp $
 dnl
 AC_INIT(krb525.h)
 dnl
+dnl Create config.h from config.hin
+dnl
+AC_CONFIG_HEADER(config.h:config.hin)
 dnl
 dnl Get the prefix from the location of "kinit"
 dnl
 AC_PREFIX_PROGRAM(kinit)
 dnl
 dnl
-AC_CACHE_CHECK([cc],
-  [krb525_cv_cc],
-  [AC_ARG_WITH([cc],
-     [  --with-cc=CC            Specify the compiler to use],
-     [krb525_cv_cc=${withval}],
-     [krb525_cv_cc=cc])
+AC_ARG_WITH([cc],
+   [  --with-cc=CC                Specify the compiler to use],
+   [CC=${withval}
+     AC_MSG_RESULT([C compiler is $CC])
+     ],
+   [AC_PROG_CC])
+dnl
+dnl Set the compiler options
+dnl
+AC_ARG_WITH([ccopts],
+   [  --with-ccopts=OPTS          Specify the compiler options to use],
+   [CCOPTS=${withval}],
+   [CCOPTS=""])
+dnl
+dnl Shall we use Kerberos 5 DB code?
+dnl
+AC_CACHE_CHECK([if we are using krb5 db code],
+  [krb525_cv_k5_db_code],
+  [AC_ARG_WITH(k5-db-code,
+    [  --without-k5-db-code        Disable Kerberos 5 DB code],
+    [krb525_cv_k5_db_code=${withval}],
+    [krb525_cv_k5_db_code=yes])
   ])
 dnl
-CC=${krb525_cv_cc}
 dnl
+dnl Get the Kerberos 5 Install Path
 dnl
-AC_CACHE_CHECK([ccopts],
-  [krb525_cv_ccopts],
-  [AC_ARG_WITH([ccopts],
-     [  --with-ccopts=OPTS      Specify the compiler options to use],
-     [krb525_cv_ccopts=${withval}],
-     [krb525_cv_ccopts=""])
-  ])
-dnl
-CCOPTS=${krb525_cv_ccopts}
-dnl
-dnl
-AC_CACHE_CHECK([krb5 path],
-  [krb525_cv_krb5_path],
-  [AC_ARG_WITH(krb5,
-    [  --with-krb5=PATH        Location of Kerberos 5 libraries and include files],
-    [krb525_cv_krb5_path=${withval}],
-    [krb525_cv_krb5_path=${prefix}])
-  ])
+AC_ARG_WITH(krb5,
+  [  --with-krb5=PATH            Location of Kerberos 5 libraries and include files],
+  [krb525_cv_krb5_path=${withval}],
+  [krb525_cv_krb5_path=${prefix}])
 dnl
 krb5dir=${krb525_cv_krb5_path}
 dnl
+dnl Get the Kerberos 5 Build Path
 dnl
-AC_CACHE_CHECK([krb5 obj path],
-  [krb525_cv_krb5_obj_path],
-  [AC_ARG_WITH(krb5-obj,
-    [  --with-krb5-obj=PATH        Location of Kerberos 5 build directory],
-    [krb525_cv_krb5_obj_path=${withval}],
-    [krb525_cv_krb5_obj_path=${prefix}])
-  ])
+AC_ARG_WITH(krb5-obj,
+ [  --with-krb5-obj=PATH        Location of Kerberos 5 build directory],
+ [krb525_cv_krb5_obj_path=${withval}],
+ [krb525_cv_krb5_obj_path=${prefix}])
 dnl
 krb5objdir=${krb525_cv_krb5_obj_path}
 dnl
+dnl Get the Kerberos 5 Source Path
 dnl
-AC_CACHE_CHECK([krb5 src path],
-  [krb525_cv_krb5_src_path],
-  [AC_ARG_WITH(krb5-src,
-    [  --with-krb5-src=PATH        Location of Kerberos 5 source directory],
-    [krb525_cv_krb5_src_path=${withval}],
-    [krb525_cv_krb5_src_path=${prefix}])
-  ])
+AC_ARG_WITH(krb5-src,
+  [  --with-krb5-src=PATH        Location of Kerberos 5 source directory],
+  [krb525_cv_krb5_src_path=${withval}],
+  [krb525_cv_krb5_src_path=${prefix}])
 dnl
 krb5srcdir=${krb525_cv_krb5_src_path}
 dnl
+dnl Get our Installation Path
 dnl
-AC_CACHE_CHECK([install path],
-  [krb525_cv_install_path],
-  [AC_ARG_WITH(install-path,
-    [  --with-install-path=PATH    Target installation path],
-    [krb525_cv_install_path=${withval}],
-    [krb525_cv_install_path=${prefix}])
-  ])
+AC_ARG_WITH(install-path,
+  [  --with-install-path=PATH    Target installation path],
+  [krb525_cv_install_path=${withval}],
+  [krb525_cv_install_path=${prefix}])
 dnl
 INSTALLPATH=${krb525_cv_install_path}
 AC_DEFINE_UNQUOTED(INSTALLPATH, "$INSTALLPATH")
 dnl
+dnl Figure out rest of stuff we need for Makefile
 dnl
 K5LIBPATH=-L${krb5dir}/lib
-K5INCPATH="-I${krb5dir}/include -I${krb5objdir}/include -I${krb5objdir}/include/krb5 -I${krb5srcdir}/include -I${krb5srcdir}/include/krb5"
-K5OBJPATH=${krb5objdir}
+K5INCPATH="-I${krb5dir}/include"
 dnl
+dnl
+if test "$krb525_cv_k5_db_code" = "yes" ; then
+  AC_DEFINE(K5_DB_CODE)
+  K5_DB_SRC_FILES="k5_db.c"
+  K5_DB_INC_FILES="k5_db.h"
+  if test ! -f "${krb5objdir}/lib/libdb.a" ; then
+    AC_MSG_ERROR("Kerberos database library not found. Did you specify --with-krb5-obj?")
+    exit 1
+  fi
+  K5_DB_LIBS="${krb5objdir}/lib/libdb.a"
+  if test ! -f "${krb5srcdir}/include/k5-int.h" ; then
+    AC_MSG_ERROR("k5-int.h not found. Did you specify --with-krb5-src?")
+    exit 1
+  fi
+  K5_DB_INC_PATH="-I${krb5objdir}/include -I${krb5objdir}/include/krb5 -I${krb5srcdir}/include -I${krb5srcdir}/include/krb5"
+fi   
 dnl
 dnl Check to see if we need "netlibs" (specifically, libnsl and libsocket)
 dnl
@@ -93,12 +108,51 @@ if test "$uname" != IRIX -a "$uname" != IRIX64 ; then
 [	SYSLIBS="$SYSLIBS -lnsl"])
 fi
 dnl
+dnl Figure out which regular expression parser to use.
+dnl  (taken from krb5/lib/krb5/os/configure.in)
+dnl Try, in order, regcomp, compile/step, re_comp.
+dnl
+AC_HAVE_HEADERS(regex.h regexpr.h)
+dnl
+dnl regcomp (which is present but non-functional on Solaris 2.4)
+dnl
+AC_CACHE_CHECK([for working regcomp],
+  [ac_cv_func_regcomp],
+  [AC_TRY_RUN([
+#include <sys/types.h>
+#include <regex.h>
+regex_t x; regmatch_t m;
+int main() { return regcomp(&x,"pat.*",0) || regexec(&x,"pattern",1,&m,0); }
+    ], ac_cv_func_regcomp=yes, ac_cv_func_regcomp=no, ac_cv_func_regcomp=no)])
+dnl
+dnl compre/step
+dnl
+LIBS=-lgen
+dnl this will fail if there's no compile/step in -lgen, or if there's
+dnl no -lgen.  This is fine.
+AC_CHECK_FUNCS(compile step, have_func_compile=yes)
+dnl
+if test "$ac_cv_func_regcomp" = yes ; then
+  AC_MSG_RESULT([Using re_comp for regular expression matching])
+  AC_DEFINE(HAVE_REGCOMP)
+elif test "$have_func_compile" = yes ; then
+  AC_MSG_RESULT([Using compile/step for regular expression matching])
+  AC_CHECK_LIB(gen, compile, [SERVERLIBS="$SERVERLIBS -lgen"])
+else
+  AC_MSG_WARN([No support for regular expression matching])
+fi
+dnl
 AC_SUBST(CC)
 AC_SUBST(CCOPTS)
 AC_SUBST(K5LIBPATH)
 AC_SUBST(K5INCPATH)
-AC_SUBST(K5OBJPATH)
 AC_SUBST(SYSLIBS)
+AC_SUBST(SERVERLIBS)
 AC_SUBST(INSTALLPATH)
+AC_SUBST(K5_DB_SRC_FILES)
+AC_SUBST(K5_DB_INC_FILES)
+AC_SUBST(K5_DB_LIB_PATH)
+AC_SUBST(K5_DB_LIBS)	
+AC_SUBST(K5_DB_INC_PATH)
 dnl
 AC_OUTPUT(Makefile)

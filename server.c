@@ -1,8 +1,12 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.4 1997/09/17 20:43:24 vwelch Exp $
+ * $Id: server.c,v 1.5 1997/09/25 19:28:53 vwelch Exp $
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "krb5.h"
 #include "com_err.h"
@@ -22,16 +26,19 @@
 #include "auth_con.h"
 #include "netio.h"
 #include "srv_conf.h"
+#ifdef K5_DB_CODE
 #include "k5_db.h"
+#endif
 
 
 #define KRB525_CONF_FILE	INSTALLPATH "/etc/krb525.conf"
 
 
-#define MY_NAME	"krb525d"
+static int validate_request_with_db(krb5_context,
+				    krb525_request *);
+static int validate_request_with_kt(krb5_context,
+				    krb525_request *);
 
-static int validate_request(krb5_context,
-			    krb525_request *);
 static char validate_error[256];
 
 
@@ -66,9 +73,10 @@ main(argc, argv)
     extern char * optarg;
     int ch;
 
-    char *progname = MY_NAME;
+    char *progname;
 
-    krb5_keytab keytab = NULL;	/* Allow specification on command line */
+    krb5_keytab keytab = NULL;
+    char *keytab_name = NULL;
 
     int response_status;
 
@@ -79,10 +87,20 @@ main(argc, argv)
 
     krb5_data ticket_data, *converted_ticket;
 
-    krb5_keyblock server_key, target_server_key;
+    krb5_keyblock *server_key, *target_server_key;
+
+    krb5_boolean use_k5_db = 0;
+    krb5_boolean use_keytab = 0;
 
 
+    /* Get our name, removing preceding path */
+    if (progname = strchr(argv[0], '/'))
+	progname++;
+    else
+	progname = argv[0];
 
+    /* open a log connection */
+    openlog(progname, LOG_PID, LOG_DAEMON);
 
     retval = krb5_init_context(&context);
     if (retval) {
@@ -90,8 +108,6 @@ main(argc, argv)
 	    exit(1);
     }
 
-    /* open a log connection */
-    openlog(MY_NAME, LOG_PID, LOG_DAEMON);
 
     /*
      * Parse command line arguments
@@ -99,8 +115,25 @@ main(argc, argv)
      */
     opterr = 0;
 
-    while ((ch = getopt(argc, argv, "p:t:s:")) != EOF)
+    while ((ch = getopt(argc, argv, "c:dkp:t:s:")) != EOF)
     switch (ch) {
+    case 'c':
+	conf_file = optarg;
+	break;
+
+    case 'd':
+#ifdef K5_DB_CODE
+	use_k5_db = 1;
+	break;
+#else
+	syslog(LOG_ERR, "K5 DB code (-d option) not supported");
+	exit(1);
+#endif
+
+    case 'k':
+	use_keytab = 1;
+	break;
+
     case 'p':
 	port = atoi(optarg);
 	break;
@@ -110,11 +143,7 @@ main(argc, argv)
 	break;
 
     case 't':
-	if (retval = krb5_kt_resolve(context, optarg, &keytab)) {
-	    com_err(progname, retval,
-		    "while resolving keytab file %s", optarg);
-	    exit(2);
-	}
+	keytab_name = optarg;
 	break;
 
     case '?':
@@ -123,15 +152,41 @@ main(argc, argv)
 	break;
     }
 
+    if (use_keytab && use_k5_db) {
+	syslog(LOG_ERR, "%s: Cannot specify both DB (-d) and keytab (-k)\n",
+	       progname);
+	opterr++;
+    }
+
     if (opterr) {
-	/* XXX Insert usage here */
-	fprintf(stderr, "Argument Error\n");
+	fprintf(stderr, "%s: Argument error - see syslog", progname);
+	fprintf(stderr, "Usage: %s [<options>]\n"
+		" Options are:\n"
+		"   -c <filename>            Specify configuration file\n"
+                "                             (Default is " KRB525_CONF_FILE ")\n"
+#ifdef K5_DB_CODE
+		"   -d                       Use K5 Database <default>\n"
+		"   -k                       Use keytab\n"
+#endif
+                "   -p <port>                Port to listen on\n"
+                "   -s <service name>        My service name\n"
+		"   -t <keytab name>         Keytab to use\n",
+		progname);
+	syslog(LOG_ERR, "Exiting with argument error");
 	exit(1);
     }
 
     argc -= optind;
     argv += optind;
 
+    /* Use keytab or DB if not specified? */
+    if (!use_keytab && !use_k5_db) {
+#if K5_DB_CODE
+	use_k5_db = 1;
+#else
+        use_keytab = 1;
+#endif
+    }
 
     /* Read my configuration file */
     if (init_conf(conf_file)) {
@@ -139,11 +194,26 @@ main(argc, argv)
 	exit(1);
     }
 
+    /* Open the keytab */
+    if (keytab_name)
+	retval = krb5_kt_resolve(context, keytab_name, &keytab);
+    else
+	retval = krb5_kt_default(context, &keytab);
+
+    if (retval) {
+	com_err(progname, retval,
+		"while resolving keytab file %s",
+		(keytab_name ? keytab_name : "(default)"));
+	exit(1);
+    }
+
+#ifdef K5_DB_CODE
     /* Open the K5 Database */
     if ((retval = k5_db_init(progname, context, NULL)) == -1) {
 	syslog(LOG_ERR, "%s while initializing K5 DB", k5_db_error);
 	exit(1);
     }
+#endif
 
     /* Get our service principal */
     if (retval = krb5_sname_to_principal(context, NULL, service, 
@@ -307,33 +377,65 @@ main(argc, argv)
     /*
      * Get the services keys we need
      */
+#ifdef K5_DB_CODE
+    if (use_k5_db) {
+	/* Get keys from db */
+	if (retval = k5_db_get_key(context,
+				   request.ticket->server, 
+				   &server_key,
+				   request.ticket->enc_part.enctype)) {
+	    syslog(LOG_ERR, "Error get service key for %s from db: %s",
+		   request.sname, k5_db_error);
+	    sprintf(errbuf, "Server error\n");
+	    response_status = STATUS_ERROR;
+	    goto respond;
+	}
 
-    if (retval = k5_db_get_key(context,
-			       request.ticket->server, 
-			       &server_key,
-			       request.ticket->enc_part.enctype)) {
-	syslog(LOG_ERR, "Error get service key for %s: %s",
-	       request.sname, k5_db_error);
-	sprintf(errbuf, "Server error\n");
-	response_status = STATUS_ERROR;
-	goto respond;
+	/* XXX Use same key type here? */
+	if (retval = k5_db_get_key(context,
+				   request.target_server, 
+				   &target_server_key,
+				   request.ticket->enc_part.enctype)) {
+	    syslog(LOG_ERR, "Error get service key for %s from db: %s",
+		   request.target_sname, k5_db_error);
+	    sprintf(errbuf, "Server error\n");
+	    response_status = STATUS_ERROR;
+	    goto respond;
+	}
+    } else
+#endif /* K5_DB_CODE */
+    {
+	/* Get keys from keytab */
+	if (retval = krb5_kt_read_service_key(context,
+					      keytab_name,
+					      request.ticket->server, 
+					      0, /* Any VNO */
+					      request.ticket->enc_part.enctype,
+					      &server_key)) {
+	    syslog(LOG_ERR, "Error get service key for %s from keytab: %s",
+		   request.sname, error_message(retval));
+	    sprintf(errbuf, "Server error\n");
+	    response_status = STATUS_ERROR;
+	    goto respond;
+	}
+
+
+	if (retval = krb5_kt_read_service_key(context,
+					      keytab_name,
+					      request.target_server, 
+					      0, /* Any VNO */
+					      request.ticket->enc_part.enctype,
+					      &target_server_key)) {
+	    syslog(LOG_ERR, "Error get service key for %s from keytab: %s",
+		   request.sname, error_message(retval));
+	    sprintf(errbuf, "Server error\n");
+	    response_status = STATUS_ERROR;
+	    goto respond;
+	}
     }
 
-    /* XXX Use same key type here? */
-    if (retval = k5_db_get_key(context,
-			       request.target_server, 
-			       &target_server_key,
-			       request.ticket->enc_part.enctype)) {
-	syslog(LOG_ERR, "Error get service key for %s: %s",
-	       request.target_sname, k5_db_error);
-	sprintf(errbuf, "Server error\n");
-	response_status = STATUS_ERROR;
-	goto respond;
-    }
-
-    
     /* Decrypt */
-    if (retval = krb5_decrypt_tkt_part(context, &server_key, request.ticket)) {
+    if (retval = krb5_decrypt_tkt_part(context, server_key, request.ticket)) {
 	syslog(LOG_ERR, "Error decrypting ticket: %s",
 	       error_message(retval));
 	sprintf(errbuf, "Server error\n");
@@ -358,21 +460,29 @@ main(argc, argv)
     /*
      * Check the request for validity
      */
-    if (retval = validate_request(context, &request) != 1) {
-	if (retval == -1) { /* Some sort of error */
-	    syslog(LOG_ERR, "Error validating request: %s",
-		   validate_error);
-	    sprintf(errbuf, "Server error\n");
-	    response_status = STATUS_ERROR;
-	    goto respond;
-	}
+#ifdef K5_DB_CODE    
+    if (use_k5_db)
+	retval = validate_request_with_db(context, &request);
+    else
+#endif /* K5_DB_CODE */
+	retval = validate_request_with_kt(context, &request);
 
+    if (retval == -1) { /* Some sort of error */
+	syslog(LOG_ERR, "Error validating request: %s",
+	       validate_error);
+	sprintf(errbuf, "Server error\n");
+	response_status = STATUS_ERROR;
+	goto respond;
+    }
+
+    if (retval == 0) {
 	syslog(LOG_ERR, "Validation failed: %s",
 	       validate_error);
 	sprintf(errbuf, "Permission denied\n");
 	response_status = STATUS_ERROR;
 	goto respond;
     }
+
 
     /*
      * OK, everything checked out. So, we change the client in the ticket,
@@ -381,7 +491,7 @@ main(argc, argv)
     request.ticket->enc_part2->client = request.target_client;
 
 
-    if (retval = krb5_encrypt_tkt_part(context, &target_server_key,
+    if (retval = krb5_encrypt_tkt_part(context, target_server_key,
 				       request.ticket)) {
 	syslog(LOG_ERR, "Error encrypting ticket: %s",
 	       error_message(retval));
@@ -389,8 +499,6 @@ main(argc, argv)
 	response_status = STATUS_ERROR;
 	goto respond;
     }
-
-    /* XXX - free keys here */
 
     if (retval = encode_krb5_ticket(request.ticket, &converted_ticket)) {
 	syslog(LOG_ERR, "Error encoding ticket: %s",
@@ -402,6 +510,11 @@ main(argc, argv)
  
     response_status = STATUS_OK;
 
+    /* No longer need keys, so let's not keep them around */
+    krb5_free_keyblock(context, server_key);
+    krb5_free_keyblock(context, target_server_key);
+
+    
 respond:
     /* Write response */
     resp_data.length = sizeof(response_status);
@@ -439,7 +552,9 @@ respond:
 
 done:
     free_conf();
+#ifdef K5_DB_CODE
     k5_db_close(context);
+#endif
     krb5_auth_con_free(context, auth_context);
     krb5_free_context(context);
     krb5_xfree(request.target_cname);
@@ -450,8 +565,9 @@ done:
 
 
 
+#ifdef K5_DB_CODE
 /*
- * Check and validate a request against kerberos configuration.
+ * Check and validate a request using K5 database.
  * 
  * Returns 1 if legal, 0 otherwise, -1 on error, setting
  * validate_error.
@@ -461,8 +577,8 @@ done:
 #define isflagset(flagfield, flag) (flagfield & (flag))
 
 static int
-validate_request(krb5_context context,
-		 krb525_request *request)
+validate_request_with_db(krb5_context context,
+			 krb525_request *request)
 {
     krb5_db_entry client;
     krb5_db_entry server;
@@ -485,7 +601,7 @@ validate_request(krb5_context context,
     }
 
     if ((retval = krb5_timeofday(context, &now))) {
-	sprintf(validate_error, "Getting time of data: %s",
+	sprintf(validate_error, "Getting time of day: %s",
 		error_message(retval));
 	return_code = -1;
 	goto done;
@@ -608,5 +724,25 @@ validate_request(krb5_context context,
 done:
     /* XXX - Need to free entries? */
     return return_code;
+}
+
+#endif /* K5_DB_CODE;
+
+/*
+ * Check and validate a request using keytab information.
+ * 
+ * Returns 1 if legal, 0 otherwise, -1 on error, setting
+ * validate_error.
+ */
+
+static int
+validate_request_with_kt(krb5_context context,
+			 krb525_request *request)
+{
+    /*
+     * Without any principal information there is nothing to check against
+     */
+
+    return 1;
 }
 

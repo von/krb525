@@ -1,0 +1,196 @@
+.\" 
+.\" krb525 man page
+.\"
+.\" $Id: krb525.1,v 1.1 1997/09/25 19:28:48 vwelch Exp $
+.\"
+.TH KRB525 1
+.SH NAME
+krb525 \- Convert clients or servers on a Kerberos 5 ticket
+.SH SYNOPSIS
+.TP
+.B krb525 
+[\fB\-c\fP \fIclient\fP] [\fB\-C\fP \fItarget_client\fP]
+[\fB\-h\fP \fIserver_host\fP] [\fB\-i\fP \fIinput_cache\fP]
+[\fB\-k\fP] [\fB\-o\fP \fIoutput_cache\fP] [\fB\-p\fP \fIserver_port\fP]
+[\fB\-s\fP \fIservice\fP] [\fB\-S\fP \fItarget_service\fP]
+[\fB\-t\fP \fIkeytab_file\fP] [\fB\-u\fP \fIusername\fP] [\fB\-v\fP]
+.br
+.SH DESCRIPTION
+.I krb525
+converts a Kerberos 5 ticket for
+.B client
+and
+.B server
+to a ticket for
+.B target_client
+and
+.BR target_server .
+.I krb525
+has three intended uses. The first is to allow users who are coming in
+from anothr realm to get tickets for their principals in the local
+realm so that the can access services that don't respect the Kerberos 5
+.k5login file. The second use is for a Kerberos-su utility that allows
+authorized users to get tickets for other clients as needed. The third
+is to allow users to acquire Kerberos credentials after they have
+been authenticated by some other means besides Kerberos.
+.PP
+krb525 does this conversion by sending the encrypted ticket over to a
+daemon, krb525d(8), via an encrypted channel. The daemon either must
+running on the Kerberos KDC or have access to a keytab with the
+relevant service keys. The daemon does the needed decryption,
+principal conversion and re-encryption of the ticket before sending it
+back the
+.I krb525
+client. The configuration file for the daemon,
+krb525.conf(5), control which principal conversion are permissable.
+.SH OPTIONS
+.TP
+\fB\-c\fP \fIclient\fP
+specifies the initial client principal name on the ticket sent to
+krb525d(8) for conversion be
+.IR client .
+By default this is the default principal of the current credentials cache.
+.TP
+\fB\-C\fP \fItarget_client\fP
+specifies the target client in the new ticket be
+.IR target_client .
+By default this will be the principal with the same name as the
+current user running the process. This allows someone who has just
+logged in from another realm and currently has a ticket for
+user@OTHERREALM.COM to get a ticket for user@LOCALREALM.COM.
+.TP
+\fB\-h\fP \fIserver_host\fP
+specifes the host to context the krb525d(8) daemon on. Be default 
+.I krb525
+will try all the KDCs for the local realm listed in the krb5.conf(5)
+file.
+.TP
+\fB\-i\fP \fIinput_cache\fP
+specifies the cache to get the credentials file from be
+.IR input_cache .
+By default it will be the current user's default cache.
+.TP
+.B \-k
+specifies that the initial credentials should be obtained using the
+keytab file. This requires that the \fB\-c\fP option be specifies to
+indicate the client principal name.
+.TP
+\fB\-o\fP \fIoutput_cache\fP
+specifies that the resulting credentials be stored in
+.IRoutput_cache .
+By default they will be stored in the user's default cache or in the 
+.I input_cache
+if that was specified (\fB\-i\fP).
+.TP
+\fB\-p\fP \fIserver_port\fP
+specifies the port number on which to try to contact the krb525d(8)
+server. By default
+.I krb525
+will try the service "krb525" as specified in /etc/services(4). If a
+krb525 entry is not present it will fall back to port 6565.
+.TP
+\fB\-s\fP \fIservice\fP
+specifies the service principal name on the ticket sent to krb525d(8)
+for conversion be
+.IR service .
+By default the service will be the Kerberos ticket-granting-ticket
+service for the local realm.
+.TP
+\fB\-S\fP \fItarget_service\fP
+specifies the target serivce in the new ticket should be
+.IR target_service .
+By default the service will be unchanged and this will be the same as
+.IR service .
+.TP
+\fB\-t\fP \fIkeytab_file\fP
+specifies the keytab file to be used is
+.IR keytab_file .
+Note that the 
+.B -k
+option must be specified for this to be meaningful.
+.TP
+\fB\-u\fP \fIuser\fP
+specifies the owner of the resulting credentials file should be
+.IR user .
+.TP
+.B \-v
+specifies that
+.I krb525
+should run in verbose mode. This can be handy for debugging.
+.SH EXAMPLES
+In this example say you are user vwelch@TEST.NCSA.EDU and you have
+just logged into a machine in the realm NCSA.EDU. The .k5login in
+~vwelch had an entry for vwelch@TEST.NCSA.EDU so you are able to log
+in just fine. Assuming you forwarded your tickets your cache will now
+look like:
+
+.nf
+Ticket cache: /tmp/krb5cc_p29962
+Default principal: vwelch@TEST.NCSA.EDU
+
+Valid starting      Expires             Service principal
+24 Sep 97 15:19:40  25 Sep 97 01:19:35  krbtgt/TEST.NCSA.EDU@TEST.NCSA.EDU
+24 Sep 97 15:19:41  25 Sep 97 01:19:35  krbtgt/NCSA.EDU@TEST.NCSA.EDU
+.fi
+
+So although you have a krbtgt for the realm NCSA.EDU, it is for the
+client vwelch@TEST.NCSA.EDU and not NCSA.EDU. Normally this would not
+make a difference since you have the principal vwelch@TEST.NCSA.EDU
+mapped to vwelch@NCSA.EDU in your .k5login.
+.PP
+But say you needed to
+access a service that did not respect the .k5login file, then you
+would need a ticket for vwelch@NCSA.EDU. You could run kinit(1) and
+enter the password for vwelch@NCSA.EDU, but this won't work for
+situations that don't allow for user input. In this case assuming the
+krb525d has been given the appropriate client mapping that
+vwelch@TEST.NCSA.EDU = vwelch@NCSA.EDU you can run krb525 and have it
+convert your ticket to one for vwelch@NCSA.EDU.
+.PP
+For example:
+
+.nf
+% ./krb525 -v
+Initializing Kerberos
+Ticket to convert is vwelch@TEST.NCSA.EDU for krbtgt/NCSA.EDU@NCSA.EDU
+Target ticket is vwelch@NCSA.EDU for krbtgt/NCSA.EDU@NCSA.EDU
+Trying to connect to krb525d on kerberos.ncsa.uiuc.edu port 6565
+Connected to kerberos.ncsa.uiuc.edu
+Getting credentials for krb525d (vwelch@TEST.NCSA.EDU for krb525/nile.ncsa.uiuc.edu@NCSA.EDU) 
+Authenticating...
+sendauth succeeded
+New ticket read from server. Storing in /tmp/krb5cc_p29962
+Initializing cache
+Changing owner of credentials cache to vwelch
+% klist
+Ticket cache: /tmp/krb5cc_p29962
+Default principal: vwelch@NCSA.EDU
+
+Valid starting      Expires             Service principal
+24 Sep 97 15:29:42  25 Sep 97 01:19:35  krbtgt/NCSA.EDU@NCSA.EDU
+
+.fi
+.SH ENVIRONMENT
+.I krb525
+uses the following environment variable:
+.TP "\w'.SM KRB5CCNAME\ \ 'u"
+.SM KRB5CCNAME
+Location of the default credentials (ticket) cache.
+.SH FILES
+.TP "\w'/tmp/krb5cc_[uid]\ \ 'u"
+/tmp/krb5cc_[uid]
+default credentials cache ([uid] is the decimal UID of the user).
+.TP
+/etc/krb5.keytab
+default location for the local host's
+.B keytab
+file.
+.SH SEE ALSO
+krb525.conf(5), krb525d(8), kinit(1)
+.SH DIAGNOSTICS
+Exit status is 0 if the conversion succeeded or 1 if it failed.
+.PP
+The error messages printed by krb525 are intentionally vague to prevent a
+hacker for gleaming too much information about the contents of your
+krb525.conf file. (These error messages are actually returned as a
+string from krb525d, so the client program itself just passes them on.)

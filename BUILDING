@@ -1,0 +1,53 @@
+
+---------------
+BUILDING KRB525
+---------------
+
+1) Run "./configure"
+
+  krb525 uses an autoconf generated configure file. The first step is to
+  run ./configure. One or more of the following options will probably be
+  needed:
+
+    --with-krb5=PATH
+
+    Specify the path to the Kerberos 5 installation directory. Be default
+    configure will look for the program kinit and use it's directory as
+    the Kerberos 5 installation path.
+
+    --without-k5-db-code
+
+    Build without support for using the Kerberos 5 database
+    directly. This means that the resulting daemon will only be able to
+    use a keytab.
+
+    --with-krb5-obj=PATH
+
+    Specify path to the Kerberos 5 build directory. This is needed to
+    build the krb525d daemon with support for using the Kerberos 5
+    database directly.
+
+    --with-krb5-src=PATH
+
+    Specify path to the Kerberos 5 source directory. This is needed to
+    build the krb525d daemon with support for using the Kerberos 5
+    database directly.
+
+    --with-intall-path=PATH
+
+    Specify the install path for the krb525 client and daemon. This
+    defaults to your Kerberos 5 install path.
+
+
+  Run "configure --help" for a complete list of options.
+
+2) Run "make"
+
+  This should build the client, krb525, and the daemon, krb525d.
+
+3) See the file INSTALLATION for installation directions.
+
+
+$Id: BUILDING,v 1.1 1997/09/25 19:28:29 vwelch Exp $
+
+

@@ -4,13 +4,28 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.3 1997/09/17 16:58:04 vwelch Exp $
+ * $Id: srv_conf.c,v 1.4 1997/09/25 19:28:54 vwelch Exp $
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+
+#if defined(HAVE_REGCOMP) && defined(HAVE_REGEX_H)
+#include <regex.h>
+
+#elif defined(HAVE_COMPILE) && defined(HAVE_REGEXPR_H)
 #include <regexpr.h>
+
+#else
+#define NO_REGEX_SUPPORT
+
+#endif
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -470,10 +485,11 @@ static int
 regex_compare(char *regex,
 	      char *string)
 {
+#ifndef NO_REGEX_SUPPORT
     char 		*buf;
     char		*bufp;
-    char		*expbuf;
     int			result;
+
 
 
     /*
@@ -525,21 +541,58 @@ regex_compare(char *regex,
     *bufp++ = '$';
     *bufp++ = '\0';
 
-    expbuf = compile(buf, NULL, NULL);
+#ifdef HAVE_REGCOMP
+    {
+	regex_t preg;
 
-    free(buf);
+	if (regcomp(&preg, buf, REG_EXTENDED)) {
+	    sprintf(srv_conf_error, "Error parsing string \"%s\"",
+		    regex);
+	    result = -1;
 
-    if (!expbuf) {
-	sprintf(srv_conf_error, "Error parsing string \"%s\"",
-		regex);
-	return -1;
+	} else {
+	    result = (regexec(&preg, string, 0, NULL, 0) == 0);
+	    regfree(&preg);
+	}
     }
 
-    result = step(string, expbuf);
+#elif HAVE_COMPILE
+    {
+	char *expbuf;
 
-    free(expbuf);
+	expbuf = compile(buf, NULL, NULL);
+
+	if (!expbuf) {
+	    sprintf(srv_conf_error, "Error parsing string \"%s\"",
+		    regex);
+	    result = -1;
+
+	} else {
+	    result = step(string, expbuf);
+	    free(expbuf);
+	}
+    }
+#else
+
+    /*
+     * If we've gotten here then there is an error in the configuration
+     * process or this file's #ifdefs
+     */
+    error -  No regular expression support found.
+
+#endif
+
+    if (buf)
+	free(buf);
 
     return result;
+
+#else /* NOREGEX_SUPPORT */
+
+    /* No regular expression support */
+    return (strcmp(regex, string) == 0);
+
+#endif /* NO_REGEX_SUPPORT */
 }
     
  

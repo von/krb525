@@ -3,7 +3,7 @@
  *
  * krb525 network I/O routines
  *
- * $Id: netio.c,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: netio.c,v 1.2 1997/09/25 19:28:52 vwelch Exp $
  */
 
 /*
@@ -11,9 +11,13 @@
  * Message sending overview:
  *
  * Each message consists of a 32 bit integer specifing the length of
- * the message in bytes, followed by the (possibly encrypted message).
+ * the message in bytes, followed by the (possibly encrypted) message.
  *
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include <sys/types.h>
 #include <sys/socket.h>

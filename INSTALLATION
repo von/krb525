@@ -1,0 +1,121 @@
+
+-------------------
+KRB525 INSTALLATION
+-------------------
+
+Installing the Client
+
+  The client program, krb525, can be installed anywhere but typically
+  in the bin subdirectory of your krb5 installation tree
+  (e.g. /krb5/bin) is a good place.
+
+  In order to contact the daemon it will look in /etc/services for a
+  "krb525" service and will use that as a port to contact the
+  daemon. If this entry is not present it will fall back to using port
+  6565 (tcp).
+
+Installing the Daemon
+
+  Install the daemon in your krb5 sbin directory. It expects to be run
+  out of inetd so add the following line to your /etc/services:
+
+  krb525            6565/tcp
+
+  Then add the following line to your /etc/inetd.conf and restart your
+  inetd daemon:
+
+  krb525d   stream    tcp  nowait    root /krb5/sbin/krb525d  krb525d
+
+  You will need to create a principal of the form "krb525/<hostname>"
+  for each host that krb525d is running on. It is suggest that the
+  daemons run on each of your Kerberos KDCs, by default that is where
+  the client will try to contact the daemon. The key for this
+  principal should be added to the keytab on each machine where the
+  daemons are running.
+
+  krb525d will log all errors and events to syslog under the facility
+  daemon. In order to diagnoise problems and do auditing you want to
+  check your syslogd configuration to make sure this information is
+  going somewhere useful.
+
+Installing the Configuration File
+
+  Before the daemon will do anything you need to create the
+  krb525.conf configuration file. By default krb525d will look for
+  this file in the etc subdirectory of your krb5 installation tree
+  (e.g. /krb5/etc/krb525.conf), but you can specify this when krb525d
+  is run with the "-c <filename>" option.
+
+  For full details on what krb525.conf whould look like see the man
+  page for krb525.conf(5). A real basic krb525.conf will look like:
+
+  #
+  # Basic krb525.conf
+  #
+
+  allowed_hosts =
+    hosta.domain.com
+    hostb.domain.com
+  ;
+
+  allowed_clients =
+    client1@DOMAIN.COM
+  ;
+
+  client_mappings = {
+    client1@DOMAIN.COM = client2@DOMAIN.COM
+  }
+
+  The above example allows the principal client1 to connect from
+  either the hosts hosta or hostb and to convert their tickets to
+  those of client2.
+
+--------------
+RUNNING KRB525
+--------------
+
+Ok, assuming you have everything installed as specified above, let's
+say you have a ticket for client1@DOMAIN.COM:
+
+% klist
+Ticket cache: /tmp/krb5cc_console
+Default principal: client1@DOMAIN.COM
+
+Valid starting      Expires             Service principal
+25 Sep 97 08:41:27  26 Sep 97 09:41:27  krbtgt/DOMAIN.COM@DOMAIN.COM
+%
+
+Now let's say you wanted to convert that ticket into a ticket for
+client2@DOMAIN.COM. You would run krb525, specifing "-C
+client2". (Specifying "-v" tells krb525 to be verbose).
+
+% krb525 -C client2 -v
+Initializing Kerberos
+Ticket to convert is client1@DOMAIN.COM for krbtgt/DOMAIN.COM@DOMAIN.COM
+Target ticket is client2@DOMAIN.COM for krbtgt/DOMAIN.COM@DOMAIN.COM
+Trying to connect to krb525d on kerberos.domain.com port 6565
+Connected to kerberos.ncsa.uiuc.edu
+Getting credentials for krb525d (client1@DOMAIN.COM for krb525/domain.com@DOMAIN.COM) 
+Authenticating...
+sendauth succeeded
+New ticket read from server. Storing in /tmp/krb5cc_console
+Initializing cache
+%
+
+Now doing a klist shows you have the converted credentials:
+% klist
+Ticket cache: /tmp/krb5cc_console
+Default principal: client2@DOMAIN.COM
+
+Valid starting      Expires             Service principal
+25 Sep 97 08:41:27  26 Sep 97 09:41:27  krbtgt/DOMAIN.COM@DOMAIN.COM
+%
+
+Notice that the ticket really has been converted and not acquired
+anew. All the original attributes of the ticket are retained.
+
+If any error occurs krb525 will return a rather vague and unhelpful
+error. This is intentional to prevent a potential hacker from gaining
+too much information about the contents of the krb525.conf file. To
+determine what the real problem is you need to check the syslog
+information of the host where krb525d is running.
