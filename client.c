@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.13 1999/10/11 16:31:50 vwelch Exp $
+ * $Id: client.c,v 1.14 1999/10/11 16:48:00 vwelch Exp $
  *
  */
 
@@ -306,7 +306,9 @@ char *argv[];
 	error_exit();
     }
 
-    /* XXX Why is this signal() call here? */
+    /*
+     * Ignore SIGPIPEs that get thrown because the server died on us.
+     */
     (void) signal(SIGPIPE, SIG_IGN);
 
     if (!valid_cksumtype(CKSUMTYPE_CRC32)) {

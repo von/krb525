@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.10 1999/10/11 15:49:48 vwelch Exp $
+ * $Id: server.c,v 1.11 1999/10/11 16:48:01 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -21,6 +21,7 @@
 #include <netdb.h>
 #include <syslog.h>
 #include <string.h>
+#include <signal.h>
 
 #include "krb525.h"
 #include "server.h"
@@ -117,6 +118,10 @@ main(argc, argv)
 	    exit(1);
     }
 
+    /*
+     * Ignore SIGPIPEs that may get thrown because the client died on us.
+     */
+    (void) signal(SIGPIPE, SIG_IGN);
 
     /*
      * Parse command line arguments
@@ -317,6 +322,8 @@ handle_connection(krb5_context context,
     krb5_data resp_data;		/* Buffer for response */
 
 
+    memset(&request, 0, sizeof(request));
+    
     retval = krb5_recvauth(context, &auth_context, (krb5_pointer)&sock,
 			   KRB525_VERSION, my_princ, 
 			   0,	/* no flags */
