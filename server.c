@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.3 1997/09/17 16:58:02 vwelch Exp $
+ * $Id: server.c,v 1.4 1997/09/17 20:43:24 vwelch Exp $
  */
 
 #include "krb5.h"
@@ -79,7 +79,7 @@ main(argc, argv)
 
     krb5_data ticket_data, *converted_ticket;
 
-    krb5_keyblock server_key;
+    krb5_keyblock server_key, target_server_key;
 
 
 
@@ -219,6 +219,14 @@ main(argc, argv)
 
     request.target_cname = inbuf.data;
 
+    /* Get target server */
+    if ((retval = read_encrypt(context, auth_context, sock, &inbuf)) < 0) {
+	syslog(LOG_ERR, "Error reading from client: %s", netio_error);
+	exit(1);
+    }
+
+    request.target_sname = inbuf.data;
+
     /* Get client ticket */
     if ((retval = read_encrypt(context, auth_context, sock, &ticket_data)) < 0) {
 	syslog(LOG_ERR, "Error reading from client: %s", netio_error);
@@ -242,14 +250,25 @@ main(argc, argv)
 	   request.cname,
 	   inet_ntoa(rsin.sin_addr));
 
-    /* Parse target name */
+    /* Parse target principal names */
     if (retval = krb5_parse_name(context,
 				 request.target_cname,
 				 &request.target_client)) {
-	syslog(LOG_ERR, "parse of target name \"%s\" failed: %s",
+	syslog(LOG_ERR, "parse of target client \"%s\" failed: %s",
 	       request.target_cname,
 	       error_message(retval));
-        sprintf(errbuf, "System error\n");
+        sprintf(errbuf, "Permission denied\n");
+	response_status = STATUS_ERROR;
+	goto respond;
+    }
+
+    if (retval = krb5_parse_name(context,
+				 request.target_sname,
+				 &request.target_server)) {
+	syslog(LOG_ERR, "parse of target server \"%s\" failed: %s",
+	       request.target_sname,
+	       error_message(retval));
+        sprintf(errbuf, "Permission denied\n");
 	response_status = STATUS_ERROR;
 	goto respond;
     }
@@ -275,26 +294,35 @@ main(argc, argv)
 	goto respond;
     }
 
-    /*
-     * XXX For now, the target service is the orinal service
-     */
-    request.target_sname = request.sname;
-
-    syslog(LOG_INFO, "target ticket is %s for %s",
+    syslog(LOG_INFO, "converting ticket: %s for %s to %s for %s",
+	   request.cname, request.sname,
 	   request.target_cname, request.target_sname);
 
     /*
      * Fill in rest of fields in request
      */
     request.krb5_context = context;
-    memcpy(&request.target_server, &request.ticket->server,
-	   sizeof(request.target_server));
     memcpy(&request.addr, &rsin, sizeof(request.addr));
 
-    /* Get the service key and decrypt */
+    /*
+     * Get the services keys we need
+     */
+
     if (retval = k5_db_get_key(context,
 			       request.ticket->server, 
 			       &server_key,
+			       request.ticket->enc_part.enctype)) {
+	syslog(LOG_ERR, "Error get service key for %s: %s",
+	       request.sname, k5_db_error);
+	sprintf(errbuf, "Server error\n");
+	response_status = STATUS_ERROR;
+	goto respond;
+    }
+
+    /* XXX Use same key type here? */
+    if (retval = k5_db_get_key(context,
+			       request.target_server, 
+			       &target_server_key,
 			       request.ticket->enc_part.enctype)) {
 	syslog(LOG_ERR, "Error get service key for %s: %s",
 	       request.target_sname, k5_db_error);
@@ -303,6 +331,8 @@ main(argc, argv)
 	goto respond;
     }
 
+    
+    /* Decrypt */
     if (retval = krb5_decrypt_tkt_part(context, &server_key, request.ticket)) {
 	syslog(LOG_ERR, "Error decrypting ticket: %s",
 	       error_message(retval));
@@ -351,7 +381,8 @@ main(argc, argv)
     request.ticket->enc_part2->client = request.target_client;
 
 
-    if (retval = krb5_encrypt_tkt_part(context, &server_key, request.ticket)) {
+    if (retval = krb5_encrypt_tkt_part(context, &target_server_key,
+				       request.ticket)) {
 	syslog(LOG_ERR, "Error encrypting ticket: %s",
 	       error_message(retval));
 	sprintf(errbuf, "Server error\n");
@@ -359,7 +390,7 @@ main(argc, argv)
 	goto respond;
     }
 
-    /* XXX - free key here */
+    /* XXX - free keys here */
 
     if (retval = encode_krb5_ticket(request.ticket, &converted_ticket)) {
 	syslog(LOG_ERR, "Error encoding ticket: %s",

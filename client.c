@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.2 1997/09/15 15:37:43 vwelch Exp $
+ * $Id: client.c,v 1.3 1997/09/17 20:43:22 vwelch Exp $
  *
  */
 
@@ -109,6 +109,7 @@ char *argv[];
     /* Where we're going to put the converted credentials */
     krb5_ccache target_ccache = NULL;
     char *target_cache_name = NULL;
+    krb5_boolean initialize_cache = 1;
 
     /* Where our credentials are */
     char *source_cache_name = NULL;
@@ -130,7 +131,7 @@ char *argv[];
     /* Process options */
     progname = argv[0];
 
-    while ((arg = getopt(argc, argv, "c:g:h:km:p:s:t:u:v")) != EOF)
+    while ((arg = getopt(argc, argv, "c:g:h:km:o:p:s:t:u:v")) != EOF)
 	switch (arg) {
 	case 'c':
 	    source_cache_name = optarg;
@@ -154,6 +155,10 @@ char *argv[];
 
 	case 'm':
 	    krb525_cname = optarg;
+	    break;
+
+	case 'o':
+	    target_cache_name = optarg;
 	    break;
 
 	case 'p':
@@ -189,7 +194,7 @@ char *argv[];
 	    break;
 	}
 
-    if ((argc - optind) != 2)
+    if ((argc - optind) != 1)
 	arg_error++;
 
     if (source_cache_name && use_keytab) {
@@ -206,13 +211,14 @@ char *argv[];
     }
 
     if (arg_error) {
-	fprintf(stderr, "%s: [<options>] <target principal> <cache name>\n"
+	fprintf(stderr, "%s: [<options>] <target principal>\n"
 		" Options are:\n"
 		"   -c <cache name>          Specify cache name to use\n"
 		"   -g <gid>                 Specify gid to own target cache\n"
 		"   -h <server host>         Host where server is running\n"
 		"   -k                       Use keytab\n"
 		"   -m <my name>             Specify my principal name\n"
+		"   -o <output cache>        Cache to write credentials out to\n"
 		"   -p <server port>         Port where server is running\n"
 		"   -s <service name>        Service name of server\n"
 		"   -t <keytab file>         Keytab file to use\n"
@@ -305,15 +311,37 @@ char *argv[];
     }
 
 
-    /* Parse target cache name */
-    target_cache_name = argv[optind++];
+    /*
+     * Figure out our target cache. If we were given one then use
+     * that. If no and we're were given a source cache then use that,
+     * otherwise use the default.
+     */
+    if (!target_cache_name && source_cache_name)
+	target_cache_name = source_cache_name;
 
-    if (retval = krb5_cc_resolve(context, target_cache_name, &target_ccache)) {
+    if (target_cache_name)
+	retval = krb5_cc_resolve(context, target_cache_name,
+				     &target_ccache);
+    else
+	retval = krb5_cc_default(context, &target_ccache);
+
+    if (retval) {
 	com_err(progname, retval, "resolving target cache %s",
-		target_cache_name);
+		(target_cache_name ? target_cache_name : "(default)"));
 	error_exit();
     }
 
+    if (!target_cache_name) {
+	target_cache_name = krb5_cc_default_name(context);
+
+	if (strncmp(target_cache_name, "FILE:", 5) == 0)
+	    target_cache_name += 5;
+
+	if (verbose)
+	    printf("Target cache is %s\n", target_cache_name);
+    }
+
+	
     /*
      * Parse krb525 client name. If no client name was provided then get
      * it from the credentials cache.
@@ -479,7 +507,16 @@ char *argv[];
     message.length = strlen(target_cname) + 1;
 
     if (retval = send_encrypt(context, auth_context, sock, message)) {
-	fprintf(stderr, "%s\n", netio_error);
+	fprintf(stderr, "%s sending target client name\n", netio_error);
+	error_exit();
+    }
+
+    /* Send target server name */
+    message.data = target_sname;
+    message.length = strlen(target_sname) + 1;
+
+    if (retval = send_encrypt(context, auth_context, sock, message)) {
+	fprintf(stderr, "%s sending target server name\n", netio_error);
 	error_exit();
     }
  
@@ -488,13 +525,13 @@ char *argv[];
     message.length = target_creds.ticket.length;
 
     if (retval = send_encrypt(context, auth_context, sock, message)) {
-	fprintf(stderr, "%s\n", netio_error);
+	fprintf(stderr, "%s sending ticket to convert\n", netio_error);
 	error_exit();
     }
  
     /* Read reply */
     if ((retval = read_msg(context, sock, &recv_data)) < 0) {
-	fprintf(stderr, "%s\n", netio_error);
+	fprintf(stderr, "%s reading reply\n", netio_error);
 	error_exit();
     }
     
@@ -505,7 +542,7 @@ char *argv[];
 	/* Read new ticket from server */
 	if ((retval = read_encrypt(context, auth_context, sock, &recv_data))
 	    < 0) {
-	    fprintf(stderr, "%s\n", netio_error);
+	    fprintf(stderr, "%s reading ticket\n", netio_error);
 	    error_exit();
 	}
 
@@ -520,7 +557,11 @@ char *argv[];
 	target_creds.client = target_cprinc;
 
 	/* Ok now store the ticket */
-	if (retval = krb5_cc_initialize(context, target_ccache, target_cprinc)) {
+
+	/* XXX - when should we initialize? */
+	if (initialize_cache &&
+	    (retval = krb5_cc_initialize(context, target_ccache,
+					 target_cprinc))) {
 	    com_err(progname, retval, "initializing cache");
 	    error_exit();
 	}
@@ -545,7 +586,7 @@ char *argv[];
 	/* Read and print error message from server */
 	if ((retval = read_encrypt(context, auth_context, sock, &recv_data))
 	    < 0) {
-	    fprintf(stderr, "%s\n", netio_error);
+	    fprintf(stderr, "%s reading error message\n", netio_error);
 	    error_exit();
 	}
 
