@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.12 1999/10/11 19:14:57 vwelch Exp $
+ * $Id: server.c,v 1.13 1999/10/11 19:23:19 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -361,6 +361,17 @@ handle_connection(krb5_context context,
     if (retval) {
 	syslog(LOG_ERR, "recvauth failed--%s", error_message(retval));
 	goto done;
+    }
+
+    /* Fill in request.client from recvauth data */
+    retval = krb5_copy_principal(context,
+				 recvauth_ticket->enc_part2->client,
+				 &request.client);
+
+    if (retval) {
+	syslog(LOG_ERR, "copy of client principal from recvauth data failed: %s",
+	       error_message(retval));
+	RESPOND_ERROR();
     }
 
     /* Prepare to encrypt/decrypt */
