@@ -2,7 +2,7 @@
 #
 # Makefile for krb525
 #
-# $Id: Makefile.in,v 1.1 1997/09/08 15:41:32 vwelch Exp $
+# $Id: Makefile.in,v 1.2 1997/09/15 15:37:41 vwelch Exp $
 #
 ######################################################################
 
@@ -29,7 +29,7 @@ SYSLIBS		=	@SYSLIBS@
 DEFS		=	@DEFS@
 
 CC		=	@CC@
-CFLAGS		=	@CCOPTS@ @DEFS@
+CFLAGS		=	-g @CCOPTS@ @DEFS@
 CPPFLAGS	=	$(K5INCPATH)
 
 ######################################################################
@@ -43,7 +43,7 @@ CLIENTLIBS	=	-lkrb5 -lcrypto -lcom_err $(SYSLIBS)
 # libraries.
 #
 SERVERLIBS	=	-lkadm5srv -lkdb5 -lgssrpc -ldyn \
-			$(K5OBJPATH)/lib/libdb.a \
+			$(K5OBJPATH)/lib/libdb.a -lgen \
 			$(CLIENTLIBS)
 
 JOINT_FILES	=	netio.c auth_con.c
@@ -59,10 +59,7 @@ SERVER_OBJS	=	$(SERVER_FILES:.c=.o) $(JOINT_FILES:.c=.o)
 
 ######################################################################
 
-all: server client
-
-client: $(CLIENT)
-server: $(SERVER)
+all: $(CLIENT) $(SERVER)
 
 $(SERVER): $(SERVER_OBJS)
 	$(CC) -o $@ $(SERVER_OBJS) $(K5LIBPATH) $(SERVERLIBS)

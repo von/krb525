@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: client.c,v 1.2 1997/09/15 15:37:43 vwelch Exp $
  *
  */
 
@@ -33,6 +33,10 @@ extern char *optarg;
 #include "krb525.h"
 #include "netio.h"
 #include "auth_con.h"
+
+
+#define KRB525_HOST		"computer.ncsa.uiuc.edu"	/* XXX */
+
 
 #define error_exit()	exit_code = 1; goto cleanup;
 

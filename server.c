@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: server.c,v 1.2 1997/09/15 15:37:45 vwelch Exp $
  */
 
 #include "krb5.h"
@@ -24,7 +24,8 @@
 #include "k5_db.h"
 
 
-extern krb5_deltat krb5_clockskew;
+#define KRB525_CONF_FILE	INSTALLPATH "/etc/krb525.conf"
+
 
 #define MY_NAME	"krb525d"
 

@@ -4,12 +4,13 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.1 1997/09/08 15:41:33 vwelch Exp $
+ * $Id: srv_conf.c,v 1.2 1997/09/15 15:37:46 vwelch Exp $
  */
 
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <regexpr.h>
  
 #include "srv_conf.h"
 #include "parse_conf.h"
@@ -26,6 +27,10 @@ static pconf_entry *find_entry_in_conf(pconf_entry *,
 
 static pconf_entry *find_entry_in_list(pconf_entry *,
 				       char *);
+
+static int regex_compare(char *,
+			 char *);
+
 
 
 
@@ -89,8 +94,17 @@ find_entry_in_list(pconf_entry *list,
 		   char *entry)
 {
     while(list != NULL) {
-	if (list->string && (strcmp(list->string, entry) == 0))
-	    return list;
+	if (list->string) {
+	    int retval;
+
+	    retval = regex_compare(list->string, entry);
+
+	    if (retval == 1)
+		return list;
+
+	    if (retval == -1)
+		return NULL;
+	}
 
 	list = list->next;
     }
@@ -98,3 +112,85 @@ find_entry_in_list(pconf_entry *list,
     return NULL;
 }
 
+
+/*
+ * Compare a string with a regular expression, returning 1 if they match,
+ * 0 if they don't and -1 on error.
+ */
+static int
+regex_compare(char *regex,
+	      char *string)
+{
+    char 		*buf;
+    char		*bufp;
+    char		*expbuf;
+    int			result;
+
+
+    /*
+     * First we convert the regular expression from the human-readable
+     * form (e.g. *.domain.com) to the machine-readable form
+     * (e.g. ^.*\.domain\.com$).
+     *
+     * Make a buffer large enough to hold the largest possible converted
+     * regex from the string plus our extra characters (one at the
+     * begining, one at the end, plus a NULL).
+     */
+    buf = (char *) malloc(2 * strlen(regex) + 3);
+
+    if (!buf) {
+	sprintf(srv_conf_error, "malloc() failed");
+	return -1;
+    }
+
+    bufp = buf;
+    *bufp++ = '^';
+
+    while (*regex) {
+	switch(*regex) {
+
+	case '*':
+	    /* '*' turns into '.*' */
+	    *bufp++ = '.';
+	    *bufp++ = '*';
+	    break;
+
+	case '?':
+	    /* '?' turns into '.' */
+	    *bufp++ = '.';
+	    break;
+
+	    /* '.' needs to be escaped to '\.' */
+	case '.':
+	    *bufp++ = '\\';
+	    *bufp++ = '.';
+	    break;
+
+	default:
+	    *bufp++ = *regex;
+	}
+
+	regex++;
+    }
+
+    *bufp++ = '$';
+    *bufp++ = '\0';
+
+    expbuf = compile(buf, NULL, NULL);
+
+    free(buf);
+
+    if (!expbuf) {
+	sprintf(srv_conf_error, "Error parsing string \"%s\"",
+		regex);
+	return -1;
+    }
+
+    result = step(string, expbuf);
+
+    free(expbuf);
+
+    return result;
+}
+    
+ 
