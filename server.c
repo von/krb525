@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.6 1997/09/30 15:40:01 vwelch Exp $
+ * $Id: server.c,v 1.7 1997/10/17 20:15:33 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -95,7 +95,7 @@ main(argc, argv)
 
 
     /* Get our name, removing preceding path */
-    if (progname = strchr(argv[0], '/'))
+    if (progname = strrchr(argv[0], '/'))
 	progname++;
     else
 	progname = argv[0];
@@ -282,7 +282,7 @@ main(argc, argv)
 
     /* Prepare to encrypt/decrypt */
     if (retval = setup_auth_context(context, auth_context, &lsin, &rsin,
-				    service)) {
+				    progname)) {
 	com_err(progname, retval, auth_con_error);
 	exit(1);
     }

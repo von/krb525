@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.7 1997/10/07 14:46:08 vwelch Exp $
+ * $Id: client.c,v 1.8 1997/10/17 20:15:32 vwelch Exp $
  *
  */
 
@@ -159,7 +159,7 @@ char *argv[];
 
 
     /* Get our name, removing preceding path */
-    if (progname = strchr(argv[0], '/'))
+    if (progname = strrchr(argv[0], '/'))
 	progname++;
     else
 	progname = argv[0];
@@ -725,7 +725,7 @@ char *argv[];
 
     /* Prepare to encrypt */
     if (retval = setup_auth_context(context, auth_context, &lsin, &rsin,
-				     krb525_cname)) {
+				     progname)) {
 	com_err(progname, retval, auth_con_error);
 	error_exit();
     }

@@ -1,5 +1,12 @@
 Fri Oct 17 14:30:23 1997  Von Welch  <vwelch@computer.ncsa.uiuc.edu>
 
+	* server.c: progname was not getting set correctly. Use progname
+	in call to setup_auth_context() to be consistant with client.
+
+	* client.c: progname was not getting set correctly. Fixed bug in
+	call to setup_auth_context() that caused failures with clients with
+	instances in their names. 
+
 	* auth_con.c (setup_auth_context): Use sin_port and not sin_addr
 	in call to krb5_gen_portaddr(). This keeps us from having cache
 	conflicts when krb525 and krb525d are running on the same machine.
