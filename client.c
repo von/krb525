@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.10 1999/10/06 17:32:50 vwelch Exp $
+ * $Id: client.c,v 1.11 1999/10/08 19:49:24 vwelch Exp $
  *
  */
 
@@ -353,7 +353,7 @@ char *argv[];
 
     /*
      * If neither a target client name or target service name was
-     * given, then target ticket is username for krbtgt
+     * given, then target ticket is for current username
      */
     if (!target_cname && !target_sname) {
 	struct passwd *pwd;
@@ -724,7 +724,7 @@ char *argv[];
     }
 
     /* Prepare to encrypt */
-    if (retval = setup_auth_context(context, auth_context, &lsin, &rsin,
+    if (retval = setup_auth_context(context, auth_context, sock,
 				     progname)) {
 	com_err(progname, retval, auth_con_error);
 	error_exit();

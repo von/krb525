@@ -1,7 +1,7 @@
 .\"
 .\" krb525.conf man page
 .\"
-.\" $Id: krb525.conf.5,v 1.2 1999/10/06 19:17:49 vwelch Exp $
+.\" $Id: krb525.conf.5,v 1.3 1999/10/08 19:49:24 vwelch Exp $
 .\"
 .TH KRB525.CONF 5
 .SH NAME
@@ -23,7 +23,7 @@ file uses the following format:
 .in +1i
 item1 = value1 ;
 item2 item3 = value2 ;
-item4 item5 = value3 value4 value 5 ;
+item4 item5 = value3 value4 value5 ;
 
 item6 = {
 	subitem1 = subvalue1 subvalue2 ;
@@ -41,69 +41,176 @@ All strings and special characters (
 .BR { ,
 .BR } ,
 .B ;
-) must be delimited by whitespace or a carriage return. The wildcard
-characters 
+) must be delimited by whitespace or a carriage return.
+For hostnames the wildcard characters 
 .B *
 and 
 .B ?
 are recognized and used as in the Unix csh. Any principal names
-without a realm name are assumed to be in the default realm. A pound
+without a realm name are assumed to be in the default realm. An
+.B *
+may appear in any for a portion of a principal name (name, instance,
+or realm) causing that portion to match anything in 
+ A pound
 character (
 .B #
 ) denotes a comment and causes all further text up to a carriage
 return to be ignored.
 .PP
+
+.SH CONFIGURATION FILE KEYWORDS
 The following items are currently used in the 
 .I krb525.conf
 file:
 .IP version
-This is a required item given the version of
+[REQUIRED] This is a required item given the version of
 .I krb525d
 that this file is intended to be used with.
 .I krb525d
 will refuse to use a file that is newer than it is.
+
 .IP allowed_clients
-This item should be followed by a list of values which are the names
-of the client principals allowed to connect and use the krb525d
-services.
+[REQUIRED] This item should be followed by a list of values which
+are the names of the client principals allowed to connect and use
+the krb525d services. Note that this is not the same as the list
+of clients that can appear in tickets that krb525d will convert,
+this is a list of clients that can connect.
+
+.IP disallowed_clients
+[OPTIONAL] This item should be followed by a list of values which
+are the names of the client principals disallowed to connect and
+use the krb525d services. Note that this is not the same as the list
+of clients that can appear in tickets that krb525d will convert,
+this is a list of clients that can connect. This list overrides
+the allowed_clients list. If it does not appear then only the
+allowed_clients list determines who may connect.
 
 .IP client_mappings
-This items should be followed by a list of "<client> = <target client>
-;" mappings. These represent legal conversions of clients that the
-krb525d daemon may perform in a ticket.
+[OPTIONAL] This items should be followed by a list of
+"<client> = <target client> ;" mappings. These represent legal
+conversions of clients in tickets that the krb525d daemon may
+perform for connecting clients that don't have their own entry
+(see below). If this list does not appear, no client conversions
+are allowed.
 
 .IP server_mappings
-This items should be followed by a list of "<service> = <target
-service> ;" mappings. These represent legal conversions of services
-that the krb525d daemon may perform in a ticket.
+[OPTIONAL] This items should be followed by a list of "<service> =
+<target service> ;" mappings. These represent legal conversions of
+services in a ticket that the krb525d daemon may perform for
+connecting clients that doen't have their own entry (see below). If
+this list does not appear, no server conversion are allowed.
 
 .IP allowed_hosts
-This item should be followed by a list of values which are the names
-of hosts from which connections may be made to the krb525d
+[REQUIRED] This item should be followed by a list of values which are
+the names of hosts from which connections may be made to the krb525d
 daemon. These names may be either the IP dot address (e.g. 10.0.0.1)
 or the full hostname (e.g. some.host.net).
 
-.PP 
-In addition there may be listings of the form:
+.IP disallowed_hosts
+[OPTIONAL] This item should be followed by a list of values which are
+the names of hosts from which connections are disallowed to the
+krb525d daemon. These names may be either the IP dot address
+(e.g. 10.0.0.1)  or the full hostname (e.g. some.host.net). This list
+overrides the allowed_hosts list. If this list does not appear, then
+the allowed_hosts list determines where connections to the host may
+appear from.
+
+.PP
+In addition there specific lists for particular clients, called client 
+listing, which have the following form:
 .sp
 .nf
-.in +1i
-<client> = {
+<client1> <client2> ... = {
+	source_clients = clienta clientb clientc... ;
+	disallowed_source_clients = clientd cliente clientf... ;
 	target_clients = client1 client2 client3... ;
+	disallowed_target_clients = clientx clienty clientz...;
 	target_servers = server1 server2 server3... ;
+	diallowed_target_servers = servera serverb serverc... ;
 	allowed_hosts = host1 host2 host3... ;
+	disallowd_hosts = hosta hostb hostc... ;
 }
-.in -1i
 .fi
 .sp
 Where
 .B <client>
-is a client principal name. This allows for a more
-specifc entry for a particular client. If such an entry exists for a
-client then all other enteries are ignored when checking a request for
-that client..
+is one or more client principal names. This allows for a more
+specifc entry for particular clients. If such an entry exists for a
+client then it's enteries will be used in preference to the default
+enteries (see RULES).
+
+.IP source_clients
+[OPTIONAL] This item should be followed by a list of values which are
+the names of client principals that this client is allowed to present
+tickets for to be converted. If this list is not present, then this
+client can only present tickets for themself.
+
+.IP disallowed_source_clients
+[OPTIONAL] This item should be followed by a list of values which are
+the names of client principals that this client is disallowed to
+present tickets for to be converted. If this list is not present, then
+this client can present ticket for any client in the allowed_clients
+list or just themself if the allowed_clients list is not present.
+
+.IP target_clients
+[OPTIONAL] This item should be followed by a list of values which are
+the names of client principals that this client is allowed to convert
+clients to in tickets it sends for conversion. If this list is not
+present then this client is not allowed to do client coversions.
+
+.IP disallowed_target_clients
+[OPTIONAL] This item should be followed by a list of values which are
+the names of client principals that this client is disallowed to convert
+clients to in tickets it sends for conversion. If this list is not
+present then this client is allowed to convert clients as specified by 
+the target_clients list.
+
+.IP target_servers
+[OPTIONAL] This item should be followed by a list of values which are
+the names of server principals that this client is allowed to convert
+servers to in tickets it sends for conversion. If this list is not
+present then this client is not allowed to do server coversions.
+
+.IP disallowed_target_servers
+[OPTIONAL] This item should be followed by a list of values which are
+the names of server principals that this client is disallowed to convert
+servers to in tickets it sends for conversion. If this list is not
+present then this client is allowed to convert servers as specified by 
+the target_servers list.
+
+.IP allowed_hosts
+[OPTIONAL] If present this list is used instead of the default
+allowed_hosts list.
+
+.IP disallowed_hosts
+[OPTIONAL] If present this list is used instead of the default
+disallowed_hosts list.
+
 .PP
-.SH EXAMPLES
+.SH HOSTNAME COMPARISONS
+
+When checking the connecting host against the configuration file
+the full hostname of the connectin host is used. The configuration
+file may have
+.B *
+and
+.B ?
+characters in hostnames which match as they do in standard shell
+globbing.
+
+.PP
+.SH PRINCIPAL COMPARISONS
+
+When checking principals names from the request against the
+configuration file the principals names in the configuration file are
+assumed to be in the default realm, unless otherwise
+specified. Principals in the configuration file may also use the
+.B *
+character for the name, instance or realm component in which case any
+value for that component will match.
+.PP
+
+.SH EXAMPLE FILE
 .sp
 .nf
 #
@@ -115,25 +222,41 @@ that client..
 # For version 0.1.x or greater of krb525d
 version = 0.1.0 ;
 
+# Allow connections from any of the following hosts
 allowed_hosts =
 	10.1.*
 	*.somewhere.com
 	somehost.domain.net
 	;
 
+# except for the following hosts
+disallowed_hosts =
+	10.1.10.10
+	badhost.somwhere.com
+	;
+
+# List of clients allowed to do conversions
 allowed_clients =
 	rsmith@OTHERDOMAIN.COM
 	jtaylor@OTHERDOMAIN.COM
+	*@MYDOMAIN.COM
 	joe
 	john/admin
 	;
 
+# except for
+disallowed_clients =
+	admin@MYDOMAIN.COM
+	;
+	
+# Default client mappings
 client_mappings = {
 	rsmith@OTHERDOMAIN.COM = roberts ;
 	jtaylor@OTHERDOMAIN.COM = jtaylor ;
 	joe = tapeadmin ;
 }
 
+# john/admin in the default realm has special privledges
 john/admin = {
 	target_clients = */foo ;
 	allowed_hosts = adminhost.somewhere.com ;
@@ -150,7 +273,9 @@ in the local realm are allowed to connect to krb525d, plus the principals
 and
 .B jtaylor
 from the realm
-.BR OTHERDOMAIN.COM .
+.B OTHERDOMAIN.COM
+and any principal from the realm
+.BR MYDOMAIN.COM .
 .PP
 .B john/admin
 has their own entry which allows their tickets to be converted to any
@@ -161,7 +286,8 @@ They are also only allowed to make connections from the host
 .PP
 The remainder of the users are allowed to connect from any host with
 an IP address begining with "10.1.", from any host in the domain
-somewhere.com or from the host somehost.domain.net.
+somewhere.com or from the host somehost.domain.net, except for the
+explicitly disallowed hosts 10.1.10.10 and badhost.somewhere.com.
 .PP
 The client_mappings section allows 
 .B rsmith@OTHERDOMAIN.COM

@@ -1,7 +1,7 @@
 .\" 
 .\" krb525_check_conf man page
 .\"
-.\" $Id: krb525_check_conf.1,v 1.1 1999/10/06 18:13:19 vwelch Exp $
+.\" $Id: krb525_check_conf.1,v 1.2 1999/10/08 19:49:24 vwelch Exp $
 .\"
 .TH KRB525_CHECK_CONF 1
 .SH NAME
@@ -11,6 +11,7 @@ krb525_check_conf \- Check a krb525 configuration file
 .B krb525_check_conf 
 [\fB\-c\fP \fIclient\fP] [\fB\-C\fP \fItarget_client\fP]
 [\fB\-h\fP \fIhostname\fP] [\fB\-i\fP \fIinput_cache\fP]
+[\fB\-r\fP \frequesting client\fP]
 [\fB\-s\fP \fIservice\fP] [\fB\-S\fP \fItarget_service\fP]
 [\fB\-v\fP] [\fB\-V\fP] [<configuration file>]
 .br
@@ -24,7 +25,7 @@ file and report wether or not the mapping would be allowed.
 .TP
 \fB\-c\fP \fIclient\fP
 specifies the client principal name to be simulated as the
-original client principal for the request.
+original client principal in the ticket to be converted.
 By default this is the default principal of the current credentials cache.
 .TP
 \fB\-C\fP \fItarget_client\fP
@@ -40,6 +41,12 @@ for the request.
 \fB\-i\fP \fIinput_cache\fP
 specifies the cache to use for getting the default client name.
 By default it will be the current user's default cache.
+.TP
+\fB\-r\fP \fIrequesting client\fP
+specified the client principal name to be used as the client who
+requested the conversion. This is usually the same as the client
+that is the ticket to be converted, but not always. By default
+this is the client in the ticket.
 .TP
 \fB\-s\fP \fIservice\fP
 specifies the service principal name to be simulated as the original

@@ -1,7 +1,7 @@
 /*
  * auth_con.h
  *
- * $Id: auth_con.h,v 1.1 1997/09/08 15:41:32 vwelch Exp $
+ * $Id: auth_con.h,v 1.2 1999/10/08 19:49:24 vwelch Exp $
  */
 
 #ifndef __AUTH_CON_H
@@ -17,8 +17,7 @@ extern char auth_con_error[];
 
 extern krb5_error_code setup_auth_context(krb5_context,
 					  krb5_auth_context,
-					  struct sockaddr_in *,
-					  struct sockaddr_in *,
+					  int sock,
 					  char *);
 
 

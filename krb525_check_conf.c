@@ -3,7 +3,7 @@
  *
  * Check the krb525d configuration.
  *
- * $Id: krb525_check_conf.c,v 1.1 1999/10/06 18:13:19 vwelch Exp $
+ * $Id: krb525_check_conf.c,v 1.2 1999/10/08 19:49:25 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -37,10 +37,11 @@ main(argc, argv)
 
     krb5_data default_realm;
 
-    krb5_principal cprinc;
-    krb5_principal target_cprinc;
-    krb5_principal sprinc;
-    krb5_principal target_sprinc;
+    char *requesting_cname = NULL;
+    char *cname = NULL;
+    char *target_cname = NULL;
+    char *sname = NULL;
+    char *target_sname = NULL;
 
     krb525_request request;
 
@@ -64,6 +65,7 @@ main(argc, argv)
     int exit_code = 0;
 
 
+
     /* Get our name, removing preceding path */
     if (progname = strrchr(argv[0], '/'))
 	progname++;
@@ -73,10 +75,6 @@ main(argc, argv)
     /*
      * Initialize request structure
      */
-    request.cname = NULL;
-    request.sname = NULL;
-    request.target_cname = NULL;
-    request.target_sname = NULL;
     request.krb5_context = NULL;
     request.ticket = NULL;
     request.target_client = NULL;
@@ -85,14 +83,14 @@ main(argc, argv)
     
     opterr = 0;
 
-    while ((ch = getopt(argc, argv, "c:C:h:i:s:S:vV")) != EOF)
+    while ((ch = getopt(argc, argv, "c:C:h:i:r:s:S:vV")) != EOF)
 	switch (ch) {
 	case 'c':
-	    request.cname = optarg;
+	    cname = strdup(optarg);
 	    break;
 
 	case 'C':
-	    request.target_cname = optarg;
+	    target_cname = strdup(optarg);
 	    break;
 	    
 	case 'h':
@@ -103,12 +101,16 @@ main(argc, argv)
 	    source_cache_name = optarg;
 	    break;
 
+	case 'r':
+	    requesting_cname = strdup(optarg);
+	    break;
+		
 	case 's':
-	    request.sname = optarg;
+	    sname = strdup(optarg);
 	    break;
 
 	case 'S':
-	    request.target_sname = optarg;
+	    target_sname = strdup(optarg);
 	    break;
 
 	case 'v':
@@ -140,6 +142,7 @@ main(argc, argv)
 		"   -C <target client>       Client to convert to\n"
 		"   -h <hostname>            Check as if request came from given host"
 		"   -i <input cache>         Specify cache to get credentials from\n"
+		"   -r <client name>         Client who made the request\n"
 		"   -s <service name>        Service for credentials to convert\n"
 		"   -S <target service>      Service to convert to\n"
 
@@ -173,16 +176,19 @@ main(argc, argv)
     /*
      * Deal with the client name and principal
      */
-    if (request.cname) {
+    if (cname) {
 	/* Parse the given client name */
 	if (verbose)
-	    printf("Parsing client name %s\n", request.cname);
+	    printf("Parsing client name %s\n", cname);
 
-	if (retval = krb5_parse_name(context, request.cname,
-				     &cprinc)) {
+	if (retval = krb5_parse_name(context, cname,
+				     &(request.tkt_client))) {
 	    com_err (progname, retval, "when parsing client name");
 	    error_exit();
 	}
+
+	free(cname);
+	cname = NULL;
 
     } else {
 	/* No client name given, use default from cache */
@@ -202,35 +208,69 @@ main(argc, argv)
 	}
 
 	if (retval = krb5_cc_get_principal(context, source_ccache,
-					   &cprinc)) {
+					   &(request.tkt_client))) {
 	    com_err(progname, retval, "while getting principal from cache");
 	    error_exit();
 	}
     }
 
     if (retval = krb5_unparse_name(context,
-				   cprinc,
-				   &(request.cname))) {
+				   request.tkt_client,
+				   &cname)) {
 	com_err(progname, retval, "when unparsing client name from cache");
 	error_exit();
     }
 
     if (verbose)
-	printf("Client name is %s\n", request.cname);
+	printf("Client name is %s\n", cname);
+
+    /*
+     * Dealing with requesting client name
+     */
+    if (!requesting_cname)
+	requesting_cname = strdup(cname);
+
+    if (verbose)
+	printf("Parsing requesting client name %s\n", requesting_cname);
+
+    if (retval = krb5_parse_name(context, requesting_cname,
+				 &(request.client))) {
+	com_err (progname, retval, "when parsing requesting client name");
+	error_exit();
+    }
+
+    free(requesting_cname);
+    requesting_cname = NULL;
+
+    if (retval = krb5_unparse_name(context,
+				   request.client,
+				   &requesting_cname)) {
+	com_err(progname, retval,
+		"when unparsing requestingclient name from cache");
+	error_exit();
+    }
+
+    if (verbose)
+	printf("Requesting client name is %s\n", requesting_cname);
+
 
     /*
      * Deal with the service name and principal
      */
-    if (request.sname) {
+    if (sname) {
 	/* Parse the given service name */
 	if (verbose)
-	    printf("Parsing service name %s\n", request.sname);
+	    printf("Parsing service name %s\n", sname);
 
-	if (retval = krb5_parse_name(context, request.sname,
-				     &sprinc)) {
+	if (retval = krb5_parse_name(context, sname,
+				     &(request.tkt_server))) {
 	    com_err(progname, retval, "parsing service name");
 	    error_exit();
 	}
+
+	free(sname);
+	sname = NULL;
+
     } else {
 	/* No service name given, use krbtgt/<realm>@<realm */
 	if (verbose)
@@ -238,7 +278,7 @@ main(argc, argv)
 		   KRB5_TGS_NAME, default_realm.data, default_realm.data);
 
 	if (retval = krb5_build_principal(context,
-					  &sprinc,
+					  &(request.tkt_server),
 					  default_realm.length,
 					  default_realm.data,
 					  KRB5_TGS_NAME,
@@ -250,21 +290,21 @@ main(argc, argv)
 	}
     }
 
-    if (retval = krb5_unparse_name(context, sprinc,
-				   &(request.sname))) {
+    if (retval = krb5_unparse_name(context, request.tkt_server,
+				   &sname)) {
 	com_err (progname, retval, "when unparsing service");
 	error_exit();
     }
 
     /*
      * If neither a target client name or target service name was
-     * given, then target ticket is username for krbtgt
+     * given, then target ticket is for current username
      */
-    if (!request.target_cname && !request.target_sname) {
-	struct passwd *pwd;
+    if (!target_cname && !target_sname) {
+	struct passwd *pwd = NULL;
 
 	if (verbose)
-	    printf("No target client or server specified - getting tgt for"
+	    printf("No target client or server specified - getting ticket for"
 		   " current username\n");
 
 	pwd = getpwuid(geteuid());
@@ -274,7 +314,9 @@ main(argc, argv)
 	    error_exit();
 	}
 
-	request.target_cname = strdup(pwd->pw_name);
+	target_cname = strdup(pwd->pw_name);
+
+	/* free(pwd); */	/* Causes segfault */
     }
 
     /*
@@ -282,23 +324,26 @@ main(argc, argv)
      */
 
     /* If no target client name given, use original client name */
-    if (!request.target_cname) {
+    if (!target_cname) {
 	if (verbose)
-	    printf("No target client speicied, useing original: %s\n",
-		   request.cname);
+	    printf("No target client speicied, using original: %s\n",
+		   cname);
 
-	request.target_cname = request.cname;
+	target_cname = strdup(cname);
     }
 
-    if (retval = krb5_parse_name (context, request.target_cname,
-				  &target_cprinc)) {
+    if (retval = krb5_parse_name (context, target_cname,
+				  &request.target_client)) {
 	com_err (progname, retval, "when parsing name %s",
-		 request.target_cname);
+		 target_cname);
 	error_exit();
     }
- 	
-    if (retval = krb5_unparse_name(context, target_cprinc,
-				   &(request.target_cname))) {
+
+    free(target_cname);
+    target_cname = NULL;
+
+    if (retval = krb5_unparse_name(context, request.target_client,
+				   &target_cname)) {
 	com_err (progname, retval, "when unparsing client");
 	error_exit();
     }
@@ -308,23 +353,25 @@ main(argc, argv)
      */
 
     /* If no target server name given, use original server name */
-    if (!request.target_sname) {
+    if (!target_sname) {
 	if (verbose)
-	    printf("No target server speicied, useing original: %s\n",
-		   request.sname);
-
-	request.target_sname = request.sname;
+	    printf("No target server specified, using original: %s\n",
+		   sname);
+	target_sname = strdup(sname);
     }
 
-    if (retval = krb5_parse_name (context, request.target_sname,
-				  &target_sprinc)) {
+    if (retval = krb5_parse_name (context, target_sname,
+				  &(request.target_server))) {
 	com_err (progname, retval, "when parsing name %s",
-		 request.target_sname);
+		 target_sname);
 	error_exit();
     }
- 	
-    if (retval = krb5_unparse_name(context, target_sprinc,
-				   &(request.target_sname))) {
+
+    free(target_sname);
+    target_sname = NULL;
+
+    if (retval = krb5_unparse_name(context, request.target_server,
+				   &target_sname)) {
 	com_err (progname, retval, "when unparsing server");
 	error_exit();
     }
@@ -376,17 +423,19 @@ main(argc, argv)
 
     if (verbose)
 	printf("Checking configuration for:\n"
+	       "      %s requesting:\n"
 	       "    %s for %s\n"
 	       "      converting to\n"
 	       "    %s for %s\n"
 	       "      from %s\n",
-	       request.cname,
-	       request.sname,
-	       request.target_cname,
-	       request.target_sname,
+	       requesting_cname,
+	       cname,
+	       sname,
+	       target_cname,
+	       target_sname,
 	       hinfo->h_name);
 
-    retval = check_conf(&request, NULL /* unused ticket */);
+    retval = check_conf(&request);
 
     if (retval == 0) {
 	printf("SUCCESS\n");
@@ -398,6 +447,11 @@ main(argc, argv)
     }
 
  cleanup:
+    if (cname) free(cname);
+    if (sname) free(sname);
+    if (target_cname) free(target_cname);
+    if (target_sname) free(target_sname);
+    if (requesting_cname) free(requesting_cname);
 
     exit(exit_code);
 }

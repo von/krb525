@@ -1,7 +1,7 @@
 /*
  * krb525d include file
  *
- * $Id: server.h,v 1.1 1997/09/17 16:58:03 vwelch Exp $
+ * $Id: server.h,v 1.2 1999/10/08 19:49:25 vwelch Exp $
  */
 
 #ifndef __SERVER_H
@@ -19,20 +19,20 @@
 typedef struct {
     /* Our Kerberos context */
     krb5_context	krb5_context;
-    /* Ticket we're converting */
+    /* Ticket we're converting - may be NULL if we are just testing */
     krb5_ticket		*ticket;
     /* Requesting client */
-    char		*cname;
-    /* Original service */
-    char		*sname;
+    krb5_principal	client;
+    /* Client and server from tkt */
+    krb5_principal	tkt_client;
+    krb5_principal	tkt_server;
     /* Client's host */
     struct sockaddr_in	addr;
     /* Target Client */
-    char		*target_cname;
     krb5_principal	target_client;
     /* Target server */
-    char		*target_sname;
     krb5_principal	target_server;
+
 } krb525_request;
 
 

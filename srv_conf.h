@@ -1,7 +1,7 @@
 /*
  * srv_conf.h
  *
- * $Id: srv_conf.h,v 1.2 1997/09/17 16:58:06 vwelch Exp $
+ * $Id: srv_conf.h,v 1.3 1999/10/08 19:49:26 vwelch Exp $
  */
 
 #ifndef __SRV_CONF_H
@@ -14,8 +14,7 @@
 
 extern int init_conf(char *);
 extern void free_conf();
-extern int check_conf(krb525_request *,
-		      krb5_ticket *);
+extern int check_conf(krb525_request *);
 
 extern char srv_conf_error[];
 

@@ -4,7 +4,7 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.5 1999/10/06 19:17:49 vwelch Exp $
+ * $Id: srv_conf.c,v 1.6 1999/10/08 19:49:26 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -50,15 +50,18 @@ static pconf_entry *find_string_in_list(pconf_entry *,
 static pconf_entry *find_string_in_regex_list(pconf_entry *,
 					      char *);
 static pconf_entry *find_princ_in_regex_list(krb5_context,
-					     pconf_entry *,
-					     char *);
+					     krb5_principal,
+					     pconf_entry *);
 static char *find_string_in_regex_values(pconf_entry *,
 					 char *);
 static char *find_host_in_regex_values(pconf_entry *,
 				       struct sockaddr_in *);
 static char *find_princ_in_regex_values(krb5_context,
-					pconf_entry *,
-					char *);
+					krb5_principal,
+					pconf_entry *);
+static int conf_string_matches_princ(krb5_context,
+				     krb5_principal,
+				     char *);
 static int regex_compare(char *,
 			 char *);
 
@@ -188,8 +191,7 @@ check_conf_version()
  * Check request against configuration. Returns 0 if good, -1 otherwise
  */
 int
-check_conf(krb525_request *request,
-	   krb5_ticket *ticket /* Not used */)
+check_conf(krb525_request *request)
 {
     pconf_entry		*entry;
     pconf_entry		*client_conf;
@@ -206,7 +208,7 @@ check_conf(krb525_request *request,
     }
 
     /*
-     * First check the list of allowed clients
+     * RULE 1: Make sure requesting client is on allowed_clients list
      */
     entry = find_string_in_list(conf, "allowed_clients");
 
@@ -216,21 +218,35 @@ check_conf(krb525_request *request,
     }
 
     if (find_princ_in_regex_values(request->krb5_context,
-				   entry, request->cname) == NULL) {
+				   request->client,
+				   entry) == NULL) {
 	sprintf(srv_conf_error, "Client not allowed");
 	goto done;
     }
 
     /*
-     * If this is a special client (it has it's own entry) then we check
-     * things against that.
+     * RULE 2: Make sure client isn't on disallowed_clients list, if
+     *         it exists.
      */
+    entry = find_string_in_list(conf, "disallowed_clients");
+
+    if (entry) {
+	if (find_princ_in_regex_values(request->krb5_context,
+				       request->client,
+				       entry) != NULL) {
+	    sprintf(srv_conf_error, "Client explicitily disallowed");
+	    goto done;
+	}
+    }
+
+    /* See if requesting client has an individual list */
     client_conf = find_princ_in_regex_list(request->krb5_context,
-					   conf, request->cname);
+					   request->client,
+					   conf);
 
     if (client_conf != NULL) {
 	/*
-	 * Client has it's own entry of the form:
+	 * Requesting client has it's own entry of the form:
 	 *
 	 * client = {
 	 *   target_clients = <client1>, <client2>, <client3>, ... ;
@@ -239,8 +255,23 @@ check_conf(krb525_request *request,
 	 * }
 	 */
 
-	/* Find the allowed hosts list and check this host */
+	/*
+	 * RULE 3: If the requesting client has a individual list, use that list
+	 *	   in preference to the default lists for all further checks
+	 */
+
+	/*
+         * RULE 3a: If the requesting client has it's own allowed_hosts
+         *          list make sure host is on the client's allowed_hosts
+         *          list otherwise make sure the client is on the default
+         *          allowed_hosts list.
+         */
 	list = find_string_in_list(client_conf->list, "allowed_hosts");
+
+	if (list == NULL) {
+	    /* Get default allowed_hosts list */
+	    list = find_string_in_list(conf, "allowed_hosts");
+	}
 
 	if (list == NULL) {
 	    sprintf(srv_conf_error, "No hosts allowed for client");
@@ -251,13 +282,78 @@ check_conf(krb525_request *request,
 	    sprintf(srv_conf_error, "Host not allowed");
 	    goto done;
 	}
-    
-	/*
-	 * If the client is changing, then check the target
-	 */
-    
-	if (strcmp(request->cname, request->target_cname)) {
 
+    	/*
+	 * Rule 3b: If the requesting client has it's own
+	 *          disallowed_hosts list make sure host is not on the
+	 *          client's disallowed_hosts list, otherwise make sure
+	 *          the host is not on the default disallowed_hosts list,
+	 *          if it exists.
+	 */
+	entry = find_string_in_list(client_conf->list, "disallowed_hosts");
+
+	if (entry == NULL) {
+	    /* Get default disallowed_hosts list */
+	    entry = find_string_in_list(conf, "disallowed_hosts");
+	}
+
+	if (entry) {
+	    if (find_host_in_regex_values(entry, &(request->addr)) != NULL) {
+		sprintf(srv_conf_error, "Host explicitily disallowed");
+		goto done;
+	    }
+	}
+
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->client,
+				    request->tkt_client)) {
+	    /*
+	     * Rule 3c: If the requesting client is different than the
+	     *          ticket client, the ticket client must appear
+	     *          in the source_clients list
+	     */
+	    entry = find_string_in_list(client_conf->list, "source_clients");
+	    
+	    if (entry == NULL) {
+		sprintf(srv_conf_error, "Client on ticket must match requestor");
+		goto done;
+	    }
+
+	    if (find_princ_in_regex_values(request->krb5_context,
+					   request->tkt_client,
+					   entry) == NULL) {
+		sprintf(srv_conf_error, "Source client not allowed");
+		goto done;
+	    }
+
+	    /*
+	     * Rule 3d: If the requesting client is different than the
+	     *          ticket client, the ticket client must not appear
+	     *          on the disallowed_source_clients list, if it
+	     *          exists.
+	     */
+	    entry = find_string_in_list(client_conf->list,
+					"disallowed_source_clients");
+
+	    if (entry) {
+		if (find_princ_in_regex_values(request->krb5_context,
+					       request->tkt_client,
+					       entry) == NULL) {
+		    sprintf(srv_conf_error, "Source client explicitly allowed");
+		    goto done;
+		}
+	    }
+	}
+
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->tkt_client,
+				    request->target_client)) {
+
+	    /*
+	     * Rule 3e: If client is changing, make sure the target client is
+	     *          on the client's target_clients list
+	     */
+   
 	    entry = find_string_in_list(client_conf->list, "target_clients");
 
 	    if (entry == NULL) {
@@ -265,18 +361,40 @@ check_conf(krb525_request *request,
 		goto done;
 	    }
 
-	    if (find_princ_in_regex_values(request->krb5_context, entry,
-					   request->target_cname) == NULL) {
+	    if (find_princ_in_regex_values(request->krb5_context,
+					   request->target_client,
+					   entry) == NULL) {
 		sprintf(srv_conf_error, "Target client not allowed");
 		goto done;
 	    }
+
+	    /*
+	     * Rule 3f: If client is changing, make sure the target client is
+	     *          not on the client's disallowed_target_clients list,
+	     *	        if it exists.
+	     */
+	    entry = find_string_in_list(client_conf->list,
+					"disallowed_target_clients");
+
+	    if (entry) {
+		if (find_princ_in_regex_values(request->krb5_context,
+					       request->target_client,
+					       entry) != NULL) {
+		    sprintf(srv_conf_error,
+			    "Target client explicitily disallowed");
+		    goto done;
+		}
+	    }
 	}
 
-	/*
-	 * If the server is changing, then check the target
-	 */
-	if (strcmp(request->sname, request->target_sname)) {
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->tkt_server,
+				    request->target_server)) {
 
+	    /*
+	     * Rule 3g: If the server is changing, make sure the target
+	     *          server is on the client's target_servers list.
+	     */
 	    entry = find_string_in_list(client_conf->list, "target_servers");
 
 	    if (entry == NULL) {
@@ -284,19 +402,56 @@ check_conf(krb525_request *request,
 		goto done;
 	    }
 
-	    if (find_princ_in_regex_values(request->krb5_context, entry,
-					   request->target_sname) == NULL) {
+	    if (find_princ_in_regex_values(request->krb5_context,
+					   request->target_client,
+					   entry) == NULL) {
 		sprintf(srv_conf_error, "Target server not allowed");
 		goto done;
+	    }
+
+	    /*
+	     * Rule 3h: If the server is changing, make sure the target
+	     *          server is not on the client's
+	     *          disallowed_target_servers list, if it exists.
+	     */
+	    entry = find_string_in_list(client_conf->list,
+					"disallowed_target_servers");
+
+	    if (entry) {
+		if (find_princ_in_regex_values(request->krb5_context,
+					       request->target_server,
+					       entry) != NULL) {
+		    sprintf(srv_conf_error,
+			    "Target service explicitily disallowed");
+		    goto done;
+		}
 	    }
 	}
 
 	/* Checks out OK */
 
     } else {
-	/* No special entry for client, check for defaults */
 
-	/* Find the allowed hosts list and check this host */
+	/*
+	 * Rule 4: If the client had no individual entry use the default
+	 *         lists.
+	 */
+
+	/*
+	 * Rule 4a: Make sure the requesting client matches the client
+	 *          on the ticket.
+	 */
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->client,
+				    request->tkt_client)) {
+	    sprintf(srv_conf_error,
+		    "Requesting client doesn't match client on ticket");
+	    goto done;
+	}
+
+	/*
+	 * Rule 4b: Make sure the host is on the default allowed_hosts list
+	 */
 	list = find_string_in_list(conf, "allowed_hosts");
 
 	if (list == NULL) {
@@ -310,11 +465,27 @@ check_conf(krb525_request *request,
 	}
 
 	/*
-	 * If the client is changing, check the mapping
+	 * Rule 4c: Make sure the host is not on the default disallowed_hosts
+	 *          list, if it exists.
 	 */
-    
-	if (strcmp(request->cname, request->target_cname)) {
+	entry = find_string_in_list(conf, "disallowed_hosts");
 
+	if (entry) {
+	    if (find_host_in_regex_values(entry, &(request->addr)) != NULL) {
+		sprintf(srv_conf_error, "Host explicitily disallowed");
+		goto done;
+	    }
+	}
+
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->tkt_client,
+				    request->target_client)) {
+
+	    /*
+	     * Rule 4d: If the client is changing make sure the source
+	     *          and target mapping appear in the client_mappings
+	     *          list.
+	     */
 	    list = find_string_in_list(conf, "client_mappings");
 
 	    if (list == NULL) {
@@ -323,26 +494,49 @@ check_conf(krb525_request *request,
 	    }
 
 	    entry = find_princ_in_regex_list(request->krb5_context, 
-					     list->list, request->cname);
+					     request->tkt_client,
+					     list->list);
 
 	    if (entry == NULL) {
 		sprintf(srv_conf_error, "No mappings for client");
 		goto done;
 	    }
 
-	    if (find_princ_in_regex_values(request->krb5_context, entry,
-					   request->target_cname) == NULL) {
+	    if (find_princ_in_regex_values(request->krb5_context,
+					   request->target_client,
+					   entry) == NULL) {
 		sprintf(srv_conf_error, "Target client not a legal mapping");
 		goto done;
 	    }
+
+	    /*
+	     * Rule 4e: If the client is changing make sure the target
+	     *	        client does not appear in the
+	     *          disallowed_target_clients list, if it exists.
+	     */
+	    entry = find_string_in_list(conf,
+					"disallowed_target_clients");
+
+	    if (entry) {
+		if (find_princ_in_regex_values(request->krb5_context,
+					       request->target_client,
+					       entry) != NULL) {
+		    sprintf(srv_conf_error,
+			    "Target client explicitily disallowed");
+		    goto done;
+		}
+	    }
 	}
 
-	/*
-	 * If the server is changing, check the mapping
-	 */
-    
-	if (strcmp(request->sname, request->target_sname)) {
+	if (!krb5_principal_compare(request->krb5_context,
+				    request->tkt_server,
+				    request->target_server)) {
 
+	    /*
+	     * Rule 4f: If the server is changing, make sure the source
+	     *          and target server mapping appear in the
+	     *          server_mappings list.
+	     */
 	    list = find_string_in_list(conf, "server_mappings");
 
 	    if (list == NULL) {
@@ -351,17 +545,35 @@ check_conf(krb525_request *request,
 	    }
 
 	    entry = find_princ_in_regex_list(request->krb5_context,
-				       list->list, request->sname);
+					     request->target_server,
+					     list->list);
 
 	    if (entry == NULL) {
 		sprintf(srv_conf_error, "No mappings for server");
 		goto done;
 	    }
 
-	    if (find_princ_in_regex_values(request->krb5_context, entry,
-					   request->target_sname) == NULL) {
+	    if (find_princ_in_regex_values(request->krb5_context,
+					   request->target_server,
+					   entry) == NULL) {
 		sprintf(srv_conf_error, "Target server not a legal mapping");
 		goto done;
+	    }
+
+	    /*
+	     * Rule 4g: If the server is changing make sure the target
+	     *          server does not appear in the
+	     *          disallowed_target_servers list, if it exists.
+	     */
+	    entry = find_string_in_list(conf, "disallowed_target_servers");
+
+	    if (entry) {
+		if (find_princ_in_regex_values(request->krb5_context,
+					       request->target_server,
+					       entry) != NULL) {
+		    sprintf(srv_conf_error, "Target service explicitily disallowed");
+		    goto done;
+		}
 	    }
 	}
 
@@ -451,34 +663,25 @@ find_string_in_regex_list(pconf_entry *entry,
  */
 static pconf_entry *
 find_princ_in_regex_list(krb5_context kcontext,
-			 pconf_entry *entry,
-			 char *pname)
+			 krb5_principal princ,
+			 pconf_entry *entry)
 {
-    pconf_entry		*found_entry = NULL;
-    char		*local_realm;
-    char		*princ_realm;
+    while(entry) {
+	char **str = entry->strings;
 
+	while(*str) {
+	    if (conf_string_matches_princ(kcontext,
+					  princ,
+					  *str))
+		return entry;
 
-    if (found_entry = find_string_in_regex_list(entry, pname))
-	return found_entry;
-
-    if (krb5_get_default_realm(kcontext, &local_realm))
-	return NULL;	/* No good way to get an error out of here. */
-
-
-    princ_realm = strchr(pname, '@');
-
-    if (princ_realm && (strcmp(princ_realm + 1, local_realm) == 0)) {
-	*princ_realm = '\0';
-
-	found_entry = find_string_in_regex_list(entry, pname);
-
-	*princ_realm = '@';
+	    str++;
+	}
+	
+	entry = entry->next;
     }
 
-    krb5_xfree(local_realm);
-
-    return found_entry;
+    return NULL;
 }
 
 
@@ -551,38 +754,91 @@ find_host_in_regex_values(pconf_entry *entry,
  */
 static char *
 find_princ_in_regex_values(krb5_context kcontext,
-			   pconf_entry *entry,
-			   char *pname)
+			   krb5_principal princ,
+			   pconf_entry *entry)
 {
-    char		*found_string = NULL;
-    char		*local_realm;
-    char		*princ_realm;
+    char		**value = entry->values;
 
+    while (*value) {
+	if (conf_string_matches_princ(kcontext, princ, *value))
+	    return *value;
 
-    if (found_string = find_string_in_regex_values(entry, pname))
-	return found_string;
-
-    if (krb5_get_default_realm(kcontext, &local_realm))
-	return NULL;	/* No good way to get an error out of here. */
-
-
-    princ_realm = strchr(pname, '@');
-
-    if (princ_realm && (strcmp(princ_realm + 1, local_realm) == 0)) {
-	*princ_realm = '\0';
-
-	found_string = find_string_in_regex_values(entry, pname);
-
-	*princ_realm = '@';
+	value++;
     }
 
-    krb5_xfree(local_realm);
-
-    return found_string;
+    return NULL;
 }
 
     
 
+/*
+ * Is the given principal matched by the given string from the conf file
+ * 1 == yes, 0 == no or error
+ */
+static int
+conf_string_matches_princ(krb5_context context,
+			  krb5_principal princ,
+			  char *conf_string)
+{
+    krb5_error_code		retval;
+    krb5_principal		conf_princ;
+    int				component;
+    int				result = 0;
+
+
+    /* Parse the configuration string */
+    retval = krb5_parse_name(context, conf_string, &conf_princ);
+
+    if (retval) {
+	/* No good way to get out an error */
+	return 0;
+    }
+
+    /* Do they match outright? If so shortcut out of here */
+    if (krb5_principal_compare(context, princ, conf_princ)) {
+	result = 1;
+	goto done;
+    }
+
+    /* A realm of '*' in the configuration file matches any realm */
+    if (strcmp(krb5_princ_realm(context, conf_princ)->data, "*") != 0) {
+	/* Check and make sure realms match */
+	if (!krb5_realm_compare(context, princ, conf_princ))
+	    goto done;
+    }
+
+    /* Now make sure they have the same number of components */
+    if (krb5_princ_size(context, princ) != krb5_princ_size(context, conf_princ))
+	goto done;
+
+    /* Now check each component */
+    for (component = 0;
+	 component < krb5_princ_size(context, princ) ;
+	 component ++) {
+	/*
+	 * A component of '*' in configuration file which matches any
+	 * anything in that component
+	 */
+	if (strcmp(krb5_princ_component(context, conf_princ, component)->data,
+		   "*") == 0)
+	    continue;
+
+	/*
+	 * otherwise make sure components match
+	 */
+	if (strcmp(krb5_princ_component(context, conf_princ, component)->data,
+		   krb5_princ_component(context, princ, component)->data) != 0)
+	    goto done;
+    }
+
+    /* Match */
+    result = 1;
+
+ done:
+    krb5_free_principal(context, conf_princ);
+
+    return result;
+}
 /*
  * Compare a string with a regular expression, returning 1 if they match,
  * 0 if they don't and -1 on error.

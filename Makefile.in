@@ -2,7 +2,7 @@
 #
 # Makefile for krb525
 #
-# $Id: Makefile.in,v 1.4 1999/10/06 18:13:19 vwelch Exp $
+# $Id: Makefile.in,v 1.5 1999/10/08 19:49:23 vwelch Exp $
 #
 ######################################################################
 
@@ -74,7 +74,7 @@ krb525_check_conf: krb525_check_conf.o $(CONF_OBJS)
 	$(CC) -o $@ krb525_check_conf.o $(CONF_OBJS) $(K5LIBPATH) $(CLIENTLIBS)
 
 clean:
-	rm -f $(SERVER_OBJS) $(CLIENT_OBJS) $(BINARIES)
+	rm -f *.o $(BINARIES)
 
 clobber: clean
 	rm -f config.cache Makefile config.h config.status config.log

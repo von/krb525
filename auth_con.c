@@ -3,7 +3,7 @@
  *
  * Functions dealing with Kerberos auth_context.
  *
- * $Id: auth_con.c,v 1.3 1997/10/17 19:32:36 vwelch Exp $
+ * $Id: auth_con.c,v 1.4 1999/10/08 19:49:24 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -19,24 +19,40 @@ char auth_con_error[255] = "No error";
 krb5_error_code
 setup_auth_context(krb5_context context,
 		   krb5_auth_context auth_context,
-		   struct sockaddr_in *localaddr,
-		   struct sockaddr_in *remoteaddr,
+		   int sock,
 		   char *uniq)
 {
-    krb5_address  	laddr, raddr, *portlocal_addr;
+    krb5_address  	laddr;
+    krb5_address	raddr;
+    krb5_address	*portlocal_addr;
     krb5_rcache 	rcache;
     krb5_data		rcache_name;
     char       		*outaddr;
     krb5_error_code	retval;
+    struct sockaddr_in 	localaddr;
+    struct sockaddr_in 	remoteaddr;
+    int namelen;
 
+    
+    namelen = sizeof(localaddr);
+    if (getsockname(sock, (struct sockaddr *) &localaddr, &namelen) < 0) {
+	sprintf(auth_con_error, "getsockname() failed");
+	return -1;
+    }
+
+    namelen = sizeof(remoteaddr);
+    if (getpeername(0, (struct sockaddr *)&remoteaddr, &namelen) < 0) {
+	sprintf(auth_con_error, "getpeername() failed");
+	return -1;
+    }
 
     laddr.addrtype = ADDRTYPE_IPPORT;
-    laddr.length = sizeof(localaddr->sin_port);
-    laddr.contents = (krb5_octet *)&(localaddr->sin_port);
+    laddr.length = sizeof(localaddr.sin_port);
+    laddr.contents = (krb5_octet *)&(localaddr.sin_port);
 
     raddr.addrtype = ADDRTYPE_IPPORT;
-    raddr.length = sizeof(remoteaddr->sin_port);
-    raddr.contents = (krb5_octet *)&(remoteaddr->sin_port);
+    raddr.length = sizeof(remoteaddr.sin_port);
+    raddr.contents = (krb5_octet *)&(remoteaddr.sin_port);
 
     if (retval = krb5_auth_con_setports(context, auth_context,
 					 &laddr, &raddr)) {
@@ -46,12 +62,12 @@ setup_auth_context(krb5_context context,
     }
 
     laddr.addrtype = ADDRTYPE_INET;
-    laddr.length = sizeof(localaddr->sin_addr);
-    laddr.contents = (krb5_octet *)&(localaddr->sin_addr);
+    laddr.length = sizeof(localaddr.sin_addr);
+    laddr.contents = (krb5_octet *)&(localaddr.sin_addr);
 
     raddr.addrtype = ADDRTYPE_INET;
-    raddr.length = sizeof(remoteaddr->sin_addr);
-    raddr.contents = (krb5_octet *)&(remoteaddr->sin_addr);
+    raddr.length = sizeof(remoteaddr.sin_addr);
+    raddr.contents = (krb5_octet *)&(remoteaddr.sin_addr);
 
     if (retval = krb5_auth_con_setaddrs(context, auth_context,
 					 &laddr, &raddr)) {
@@ -64,7 +80,7 @@ setup_auth_context(krb5_context context,
     /* Set up replay cache */ 
     if ((retval = krb5_gen_portaddr(context,
 				    &laddr,
-				    (krb5_pointer) &(localaddr->sin_port),
+				    (krb5_pointer) &(localaddr.sin_port),
 				    &portlocal_addr))) {
 	sprintf(auth_con_error, "%s while generating port address",
 		error_message(retval));
