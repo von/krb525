@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.12 1999/10/11 15:50:12 vwelch Exp $
+ * $Id: client.c,v 1.13 1999/10/11 16:31:50 vwelch Exp $
  *
  */
 
@@ -84,8 +84,7 @@ main(argc, argv)
 int argc;
 char *argv[];
 {
-    struct sockaddr_in lsin, rsin;
-    int sock, namelen;
+    int sock;
 
     krb5_context context;
     krb5_auth_context auth_context = 0;
@@ -707,21 +706,6 @@ char *argv[];
 
     if (verbose)
 	printf("sendauth succeeded\n");
-
-    /* Get addresses of connection ends */
-    namelen = sizeof(rsin);
-    if (getpeername(sock, (struct sockaddr *) &rsin, &namelen) < 0) {
-	perror("getpeername");
-	close(sock);
-	error_exit();
-    }
-
-    namelen = sizeof(lsin);
-    if (getsockname(sock, (struct sockaddr *) &lsin, &namelen) < 0) {
-	perror("getsockname");
-	close(sock);
-	error_exit();
-    }
 
     /* Prepare to encrypt */
     if (retval = setup_auth_context(context, auth_context, sock,
