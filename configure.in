@@ -1,7 +1,7 @@
 dnl
 dnl configure.in for krb525
 dnl
-dnl $Id: configure.in,v 1.3 1997/10/02 15:54:08 vwelch Exp $
+dnl $Id: configure.in,v 1.4 1997/10/14 18:22:29 vwelch Exp $
 dnl
 AC_INIT(krb525.h)
 dnl
@@ -133,7 +133,7 @@ fi
 dnl
 dnl Figure out which regular expression parser to use.
 dnl  (taken from krb5/lib/krb5/os/configure.in)
-dnl Try, in order, regcomp, compile/step, re_comp.
+dnl Try, in order, regcomp, compile/step
 dnl
 AC_HAVE_HEADERS(regex.h regexpr.h)
 dnl
