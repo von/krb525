@@ -1,7 +1,7 @@
 .\" 
 .\" krb525 man page
 .\"
-.\" $Id: krb525.1,v 1.1 1997/09/25 19:28:48 vwelch Exp $
+.\" $Id: krb525.1,v 1.2 1997/09/30 15:39:59 vwelch Exp $
 .\"
 .TH KRB525 1
 .SH NAME
@@ -14,6 +14,7 @@ krb525 \- Convert clients or servers on a Kerberos 5 ticket
 [\fB\-k\fP] [\fB\-o\fP \fIoutput_cache\fP] [\fB\-p\fP \fIserver_port\fP]
 [\fB\-s\fP \fIservice\fP] [\fB\-S\fP \fItarget_service\fP]
 [\fB\-t\fP \fIkeytab_file\fP] [\fB\-u\fP \fIusername\fP] [\fB\-v\fP]
+[\fB\-V\fP]
 .br
 .SH DESCRIPTION
 .I krb525
@@ -117,6 +118,11 @@ specifies the owner of the resulting credentials file should be
 specifies that
 .I krb525
 should run in verbose mode. This can be handy for debugging.
+.TP
+.B \-V
+specifies that
+.I krb525
+should print it's version number and exit.
 .SH EXAMPLES
 In this example say you are user vwelch@TEST.NCSA.EDU and you have
 just logged into a machine in the realm NCSA.EDU. The .k5login in

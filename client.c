@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.4 1997/09/25 19:28:42 vwelch Exp $
+ * $Id: client.c,v 1.5 1997/09/30 15:39:57 vwelch Exp $
  *
  */
 
@@ -37,6 +37,7 @@ extern char *optarg;
 #include "krb525.h"
 #include "netio.h"
 #include "auth_con.h"
+#include "version.h"
 
 
 #define error_exit()	{ exit_code = 1; goto cleanup; }
@@ -139,7 +140,7 @@ char *argv[];
 	progname = argv[0];
 
     /* Process arguments */
-    while ((arg = getopt(argc, argv, "c:C:g:h:i:ko:p:s:S:t:u:v")) != EOF)
+    while ((arg = getopt(argc, argv, "c:C:g:h:i:ko:p:s:S:t:u:vV")) != EOF)
 	switch (arg) {
 	case 'c':
 	    cname = optarg;
@@ -193,6 +194,10 @@ char *argv[];
 	    verbose++;
 	    break;
 
+	case 'V':
+	    printf("%s Version %s\n", progname, KRB525_VERSION_STRING);
+	    exit(0);
+
 	default:
 	    arg_error++;
 	    break;
@@ -232,6 +237,7 @@ char *argv[];
 		"   -t <keytab file>         Keytab file to use\n"
 		"   -u <username>            Specify owner of output cache\n"
 		"   -v                       Verbose mode\n",
+		"   -V                       Print version and exit\n",
 		progname);
 	exit(1);
     }

@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.5 1997/09/25 19:28:53 vwelch Exp $
+ * $Id: server.c,v 1.6 1997/09/30 15:40:01 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -29,6 +29,7 @@
 #ifdef K5_DB_CODE
 #include "k5_db.h"
 #endif
+#include "version.h"
 
 
 #define KRB525_CONF_FILE	INSTALLPATH "/etc/krb525.conf"
@@ -115,42 +116,46 @@ main(argc, argv)
      */
     opterr = 0;
 
-    while ((ch = getopt(argc, argv, "c:dkp:t:s:")) != EOF)
-    switch (ch) {
-    case 'c':
-	conf_file = optarg;
-	break;
+    while ((ch = getopt(argc, argv, "c:dkp:t:s:V")) != EOF)
+	switch (ch) {
+	case 'c':
+	    conf_file = optarg;
+	    break;
 
-    case 'd':
+	case 'd':
 #ifdef K5_DB_CODE
-	use_k5_db = 1;
-	break;
+	    use_k5_db = 1;
+	    break;
 #else
-	syslog(LOG_ERR, "K5 DB code (-d option) not supported");
-	exit(1);
+	    syslog(LOG_ERR, "K5 DB code (-d option) not supported");
+	    exit(1);
 #endif
 
-    case 'k':
-	use_keytab = 1;
-	break;
+	case 'k':
+	    use_keytab = 1;
+	    break;
 
-    case 'p':
-	port = atoi(optarg);
-	break;
+	case 'p':
+	    port = atoi(optarg);
+	    break;
 
-    case 's':
-	service = optarg;
-	break;
+	case 's':
+	    service = optarg;
+	    break;
 
-    case 't':
-	keytab_name = optarg;
-	break;
+	case 't':
+	    keytab_name = optarg;
+	    break;
 
-    case '?':
-    default:
-	opterr++;
-	break;
-    }
+	case 'V':
+	    printf("%s Version %s\n", progname, KRB525_VERSION_STRING);
+	    exit(0);
+       
+	case '?':
+	default:
+	    opterr++;
+	    break;
+	}
 
     if (use_keytab && use_k5_db) {
 	syslog(LOG_ERR, "%s: Cannot specify both DB (-d) and keytab (-k)\n",
@@ -171,6 +176,7 @@ main(argc, argv)
                 "   -p <port>                Port to listen on\n"
                 "   -s <service name>        My service name\n"
 		"   -t <keytab name>         Keytab to use\n",
+		"   -V                       Print version and exit\n",
 		progname);
 	syslog(LOG_ERR, "Exiting with argument error");
 	exit(1);
