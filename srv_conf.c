@@ -4,7 +4,7 @@
  * Routines to process the krb525 configuration files and check on the
  * legality of requests.
  *
- * $Id: srv_conf.c,v 1.8 1999/10/08 21:52:11 vwelch Exp $
+ * $Id: srv_conf.c,v 1.9 1999/10/08 22:18:37 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -546,7 +546,7 @@ check_conf(krb525_request *request)
 	    }
 
 	    entry = find_princ_in_regex_list(request->krb5_context,
-					     request->target_server,
+					     request->tkt_server,
 					     list->list);
 
 	    if (entry == NULL) {
