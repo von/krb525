@@ -1,7 +1,7 @@
 /*
  * krb525 deamon
  *
- * $Id: server.c,v 1.11 1999/10/11 16:48:01 vwelch Exp $
+ * $Id: server.c,v 1.12 1999/10/11 19:14:57 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -70,6 +70,8 @@ static char *progname;
 
 static krb5_boolean use_k5_db = 0;	/* Use krb5 data to get service keys? */
 static krb5_boolean use_keytab = 0;	/* Use a keytab to get service keys? */
+static int verbose = 0;			/* Log lots of information */
+
 
 
 int
@@ -129,7 +131,7 @@ main(argc, argv)
      */
     opterr = 0;
 
-    while ((ch = getopt(argc, argv, "c:dkp:t:s:V")) != EOF)
+    while ((ch = getopt(argc, argv, "c:dkp:t:s:vV")) != EOF)
 	switch (ch) {
 	case 'c':
 	    conf_file = optarg;
@@ -158,6 +160,10 @@ main(argc, argv)
 
 	case 't':
 	    keytab_name = optarg;
+	    break;
+
+	case 'v':
+	    verbose = 1;
 	    break;
 
 	case 'V':
@@ -189,6 +195,7 @@ main(argc, argv)
                 "   -p <port>                Port to listen on\n"
                 "   -s <service name>        My service name\n"
 		"   -t <keytab name>         Keytab to use\n"
+		"   -v                       Verbose mode\n"
 		"   -V                       Print version and exit\n",
 		progname);
 	syslog(LOG_ERR, "Exiting with argument error");
@@ -208,6 +215,9 @@ main(argc, argv)
     }
 
     /* Read my configuration file */
+    if (verbose)
+	syslog(LOG_INFO, "Reading configuration file %s", conf_file);
+
     if (init_conf(conf_file)) {
 	syslog(LOG_ERR, "Reading configuration file: %s", srv_conf_error);
 	exit(1);
@@ -215,6 +225,9 @@ main(argc, argv)
 
     if (use_keytab) {
 	/* Open the keytab */
+	if (verbose)
+	    syslog(LOG_INFO, "Initializing keytab");
+
 	if (keytab_name)
 	    retval = krb5_kt_resolve(context, keytab_name, &keytab);
 	else
@@ -231,6 +244,9 @@ main(argc, argv)
 #ifdef K5_DB_CODE
     if (use_k5_db) {
 	/* Open the K5 Database */
+	if (verbose)
+	    syslog(LOG_INFO, "Opening K5 database");
+
 	retval = k5_db_init(progname, context, NULL);
 	
 	if (retval == -1) {
@@ -256,6 +272,9 @@ main(argc, argv)
     if (port) {
 	int acc;
 
+	if (verbose)
+	    syslog(LOG_INFO, "Accepting connection on port %d", port);
+
 	sock = make_accepting_sock(port);
 
 	if (sock == -1) {
@@ -273,6 +292,9 @@ main(argc, argv)
     } else {
 	/* Socket already on fd 0 */
 	sock = 0;
+
+	if (verbose)
+	    syslog(LOG_INFO, "Started from inetd, using sock=%d", sock);
     }
 
     handle_connection(context, sock, my_princ, keytab);
@@ -287,6 +309,9 @@ done:
 #endif
     krb5_free_principal(context, my_princ);
     krb5_free_context(context);
+
+    if (verbose)
+	syslog(LOG_INFO, "exiting");
 
     exit(0);
 }
@@ -323,7 +348,10 @@ handle_connection(krb5_context context,
 
 
     memset(&request, 0, sizeof(request));
-    
+
+    if (verbose)
+	syslog(LOG_INFO, "Doing authentication of client");
+
     retval = krb5_recvauth(context, &auth_context, (krb5_pointer)&sock,
 			   KRB525_VERSION, my_princ, 
 			   0,	/* no flags */
@@ -336,6 +364,9 @@ handle_connection(krb5_context context,
     }
 
     /* Prepare to encrypt/decrypt */
+    if (verbose)
+	syslog(LOG_INFO, "Setting up authentication context");
+
     retval = setup_auth_context(context, auth_context, sock, progname);
 
     if (retval) {
@@ -346,12 +377,18 @@ handle_connection(krb5_context context,
  
 
     /* Read request from user */
+    if (verbose)
+	syslog(LOG_INFO, "Reading request from client");
+
     retval = read_request(context, auth_context, sock, &request);
 
     if (retval)
 	RESPOND_ERROR();
 
     /* And decrypt the ticket the user sent us */
+    if (verbose)
+	syslog(LOG_INFO, "Decrypting ticket sent by client");
+
     retval = decrypt_request_ticket(context, &request, keytab);
 
     if (retval)
@@ -379,6 +416,9 @@ handle_connection(krb5_context context,
     /*
      * Check request with krb525 configuration
      */
+    if (verbose)
+	syslog(LOG_INFO, "Checking client request against configuration");
+
     if (check_conf(&request)) {
 	syslog(LOG_ERR, srv_conf_error);
 	RESPOND_DENIED();
@@ -387,6 +427,9 @@ handle_connection(krb5_context context,
     /*
      * Check the request for validity
      */
+    if (verbose)
+	syslog(LOG_INFO, "Validating principals in client request");
+
 #ifdef K5_DB_CODE    
     if (use_k5_db)
 	retval = validate_request_with_db(context, &request);
@@ -410,6 +453,9 @@ handle_connection(krb5_context context,
     /*
      * OK, everything checked out.
      */
+
+    if (verbose)
+	syslog(LOG_INFO, "Client request looks good");
 
     /*
      * Change the ticket as requested
@@ -457,6 +503,9 @@ respond:
 
     switch(response_status) {
     case STATUS_OK:
+	if (verbose)
+	    syslog(LOG_INFO, "Responding with success to client");
+
 	/* Send back ticket to client */
 	resp_data.length = converted_ticket->length;
 	resp_data.data = converted_ticket->data;
@@ -465,6 +514,9 @@ respond:
 	
     case STATUS_ERROR:
 	/* Return error string */
+	if (verbose)
+	    syslog(LOG_INFO, "Responding with error to client");
+
 	resp_data.length = strlen(errbuf) + 1;
 	resp_data.data = errbuf;
 	break;
@@ -494,6 +546,9 @@ respond:
 	krb5_free_principal(context, request.target_client);
     if (request.target_server)
 	krb5_free_principal(context, request.target_server);
+
+    if (verbose)
+	syslog(LOG_INFO, "Done with connection");
 }
 
 
@@ -586,7 +641,8 @@ read_request(krb5_context		context,
     retval = read_encrypt(context, auth_context, sock, &inbuf);
 
     if (retval) {
-	syslog(LOG_ERR, "Error reading from client: %s", netio_error);
+	syslog(LOG_ERR, "Error reading target client from client: %s",
+	       netio_error);
 	goto done;
     }
 
@@ -596,7 +652,8 @@ read_request(krb5_context		context,
     retval = read_encrypt(context, auth_context, sock, &inbuf);
 
     if (retval) {
-	syslog(LOG_ERR, "Error reading from client: %s", netio_error);
+	syslog(LOG_ERR, "Error reading target server from client: %s",
+	       netio_error);
 	goto done;
     }
 
@@ -606,7 +663,7 @@ read_request(krb5_context		context,
     retval = read_encrypt(context, auth_context, sock, &ticket_data);
 
     if (retval) {
-	syslog(LOG_ERR, "Error reading from client: %s", netio_error);
+	syslog(LOG_ERR, "Error reading ticket from client: %s", netio_error);
 	goto done;
     }
 

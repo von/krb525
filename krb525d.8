@@ -1,7 +1,7 @@
 .\" 
 .\" krb525d man page
 .\"
-.\" $Id: krb525d.8,v 1.2 1997/09/30 15:40:00 vwelch Exp $
+.\" $Id: krb525d.8,v 1.3 1999/10/11 19:14:57 vwelch Exp $
 .\"
 .TH KRB525D 8
 .SH NAME
@@ -24,6 +24,8 @@ krb525d \- Kerberos V5 Ticket translater daemon
 ] [
 .B \-t
 .I keytab_name
+] [
+.B \-v
 ] [
 .B \-V
 ]
@@ -82,6 +84,11 @@ local keytab file.
 \fB\-t\fP \fIkeytab_name\fP
 specifies the name of the keytab file to be used by
 .IR krb525d .
+.TP
+.B \-v
+specifies that
+.I krb525d
+run in verbose mode and log extra information.
 .TP
 .B \-V
 specifies that
