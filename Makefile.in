@@ -1,0 +1,81 @@
+######################################################################
+#
+# Makefile for krb525
+#
+# $Id: Makefile.in,v 1.1 1997/09/08 15:41:32 vwelch Exp $
+#
+######################################################################
+
+######################################################################
+#
+# Support obj directories
+#
+
+srcdir		=	@srcdir@
+VPATH		=	@srcdir@
+
+######################################################################
+#
+# Substitutions from configure
+#
+
+K5INCPATH	=	@K5INCPATH@
+K5LIBPATH	=	@K5LIBPATH@
+K5OBJPATH	=	@K5OBJPATH@
+
+INSTALLPATH	=	@INSTALLPATH@
+SYSLIBS		=	@SYSLIBS@
+
+DEFS		=	@DEFS@
+
+CC		=	@CC@
+CFLAGS		=	@CCOPTS@ @DEFS@
+CPPFLAGS	=	$(K5INCPATH)
+
+######################################################################
+
+CLIENT		=	krb525
+SERVER		=	krb525d
+
+CLIENTLIBS	=	-lkrb5 -lcrypto -lcom_err $(SYSLIBS)
+#
+# $(CLIENTLIBS) must be last as libkrb5.a is needed by some of the other
+# libraries.
+#
+SERVERLIBS	=	-lkadm5srv -lkdb5 -lgssrpc -ldyn \
+			$(K5OBJPATH)/lib/libdb.a \
+			$(CLIENTLIBS)
+
+JOINT_FILES	=	netio.c auth_con.c
+CLIENT_FILES	=	client.c
+SERVER_FILES	=	server.c srv_conf.c k5_db.c parse_conf.c
+
+JOINT_INCS	=	krb525.h netio.h auth_con.h
+CLIENT_INCS	=	$(JOINT_INCS)
+SERVER_INCS	=	$(JOINT_INCS) srv_conf.h k5_db.h parse_conf.h
+
+CLIENT_OBJS	=	$(CLIENT_FILES:.c=.o) $(JOINT_FILES:.c=.o)
+SERVER_OBJS	=	$(SERVER_FILES:.c=.o) $(JOINT_FILES:.c=.o)
+
+######################################################################
+
+all: server client
+
+client: $(CLIENT)
+server: $(SERVER)
+
+$(SERVER): $(SERVER_OBJS)
+	$(CC) -o $@ $(SERVER_OBJS) $(K5LIBPATH) $(SERVERLIBS)
+
+$(CLIENT): $(CLIENT_OBJS)
+	$(CC) -o $@ $(CLIENT_OBJS) $(K5LIBPATH) $(CLIENTLIBS)
+
+clean:
+	rm -f $(SERVER_OBJS) $(CLIENT_OBJS) $(CLIENT) $(SERVER)
+
+depend:
+	makedepend -- $(CPPFLAGS) \
+		-- $(JOINT_FILES) $(CLIENT_FILES) $(SERVER_FILES)
+
+install: client server
+	@echo Install not implemented yet.

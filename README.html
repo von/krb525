@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2//EN">
+<HTML>
+<HEAD>
+   <TITLE>KRB525 README</TITLE>
+   <META NAME="GENERATOR" CONTENT="Mozilla/3.0Gold (X11; I; SunOS 5.4 sun4m) [Netscape]">
+   <META NAME="Author" CONTENT="Von Welch">
+</HEAD>
+<BODY TEXT="#000000" BGCOLOR="#FFFFFF" LINK="#0000EE" VLINK="#551A8B" ALINK="#FF0000">
+
+<H1 ALIGN=CENTER>krb525 README</H1>
+
+<CENTER><P>
+<HR WIDTH="100%"></P></CENTER>
+
+<CENTER><PRE>$Id: README.html,v 1.1 1997/09/08 15:41:33 vwelch Exp $ </PRE></CENTER>
+
+<CENTER><P>Von Welch &lt;<A HREF="mailto:vwelch@ncsa.uiuc.edu">vwelch@ncsa.uiuc.edu</A>&gt;</P></CENTER>
+
+<CENTER><P>
+<HR WIDTH="100%"></P></CENTER>
+
+<H2>Table of Contents</H2>
+
+<OL>
+<LI>krb525 Overview</LI>
+
+<LI>Building krb525</LI>
+
+<LI>Installing krb525 krb525 </LI>
+
+<LI>Running krb525</LI>
+</OL>
+
+<H2>krb525 Overview</H2>
+
+<P>krb525 is a tool for converting arbitrary K5 tickets from one client
+to another. It consists of a client program (krb525) and a daemon program
+(krb525d) which must run as root on the KDC. The user runs the krb525 client
+program giving it the following:</P>
+
+<UL>
+<LI>A target client and server for the desired ticket. By default the server
+is krbtgt/&lt;realm&gt;</LI>
+
+<LI>A target credentials cache name for the convrted ticket.</LI>
+
+<LI>A keytab file or credentials cache. If a credentials cache is given
+and a ticket exists in it for the given target server it will be used as
+the ticket for modification. This allows a krbtgt to be acquired before
+hand with kinit with certain characteristics (renewal time, forwarding,
+etc.) that will be present in the converted ticket. Otherwise a ticket
+for the target client and server is acquired.</LI>
+
+<LI>The name of the destination credentials cache. </LI>
+</UL>
+
+<P>The krb525 program contacts the krb525d and authenticates using the
+credentials from the keytab or cache. It then sends the krb525d a copy
+of the ticket to be converted and the name of the target client principal.
+The krb525d daemon checks the contacting client, target client and host
+that originated the connection against it's configuration for legality.
+Assuming these check out, it looks up the service's key, decrypts the ticket,
+changes the client name to that of the target client, reencrypts the ticket
+and sends it back to the client. The client krb525 program then does some
+further massaging of the unencrypted credentials and put the converted
+credentials and ticket into the specified cache.</P>
+
+<H2>Building krb525 </H2>
+
+<P><B>Run ./configure</B></P>
+
+<P>krb525 uses an autoconf generated configure file. The first step is
+to run ./configure. One or more of the following options will be needed:</P>
+
+<DT>--with-krb5=PATH</DT>
+
+<DD>Specify the path to the Kerberos 5 installation directory.</DD>
+
+<DT>--with-krb5-obj=PATH</DT>
+
+<DD>Specify path to the Kerberos 5 build directory. This is needed to build
+the krb525d daemon.</DD>
+
+<DT>--with-krb5-src=PATH</DT>
+
+<DD>Specify path to the Kerberos 5 source directory. This is needed to
+build the krb525d daemon.</DD>
+
+<P><B>Run make</B></P>
+
+<P>This should build the client, krb525, and daemon, krb525d, programs.</P>
+
+<H2>Installing krb525</H2>
+
+<P>You will need to create two principals for running krb525. The first
+is the principal &quot;krb525d/&lt;host&gt;&quot; where &lt;host&gt; is
+the hostname of the host that will be running the krb525d daemon which
+must be one of your KDCs. The second principal is for the client and may
+be any arbitrary name. For these examples let's assume it's &quot;krb525&quot;.
+Note that it's possible to have any number of clients each with a different
+principal.</P>
+
+<P>You may also want to create a principal &quot;test&quot; for testing.</P>
+
+<P>On the host where the daemon will run, add the krb525d/&lt;host&gt;
+key to the keytab. Install the daemon binary in your krb5/sbin directory.</P>
+
+<P>Add the following line to /etc/services (note that this port number
+was grabbed out of thin air and is in no way offical):</P>
+
+<PRE>krb525            6565/tcp</PRE>
+
+<P>Then add the following line to /etc/inetd.conf and restart your inetd
+daemon:</P>
+
+<PRE>krb525        stream    tcp    nowait    root    /krb5/sbin/krb525d</PRE>
+
+<P>In your krb5 directory, create the directory etc if it doesn't already
+exist and create a krb525.conf file. This file should look like the following:</P>
+
+<PRE>allowed_clients = {
+      krb525@NCSA.EDU
+}
+allowed_targets = {
+      test@NCSA.EDU
+}
+allowed_hosts = {
+      10.0.0.1
+}</PRE>
+
+<P>The allowed_clients list specifies the list of client principals that
+are allowed to use the krb525 service. The allowed_targets are the list
+of client principals that tickets are allowed to be converted to. The allowed_hosts
+are a list of hosts that clients are allowed to connect from (note that
+currently you must put in IP&nbsp;addresses and not hostnames).</P>
+
+<P>All three of these lists must be present or you will get permission
+errors trying to use krb525d. Currently there is no wildcard support.</P>
+
+<P>To install the client add the key for the krb525 principal to the keytab
+on the client's host and install the krb525 program in the krb5/bin directory.</P>
+
+<H2>Running krb525</H2>
+
+<P>On the client host as root, run the following:</P>
+
+<PRE>krb525 -k -m krb525 -v test /tmp/ccache.test</PRE>
+
+<P>This will use krb525's key in the keytab to get a krbtgt for the client
+principal &quot;test&quot; and put it into the credentials cache &quot;/tmp/ccache.test&quot;.
+If you run into problems check the syslog on the daemon's host. The daemon
+will log as facility daemon.</P>
+
+<P>If you want to specify options in the krbtgt currently what you do is
+use the keytab and kinit to create a krbtgt with the options you want and
+then use krb525 to change the client. For example to get a forwardable
+krbtgt with a renewable life of 7 days:</P>
+
+<P>kinit -k -f -r 7d -c /tmp/ccache.krb525 krb525</P>
+
+<P>krb525 -c /tmp/ccache.krb525 -v test /tmp/ccache.test</P>
+
+<P><BR>
+
+<HR WIDTH="100%"></P>
+
+</BODY>
+</HTML>
