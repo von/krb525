@@ -12,7 +12,7 @@
 <CENTER><P>
 <HR WIDTH="100%"></P></CENTER>
 
-<CENTER><PRE>$Id: README.html,v 1.2 1997/09/17 16:57:55 vwelch Exp $ </PRE></CENTER>
+<CENTER><PRE>$Id: README.html,v 1.3 1997/09/17 20:49:27 vwelch Exp $ </PRE></CENTER>
 
 <CENTER><P>Von Welch &lt;<A HREF="mailto:vwelch@ncsa.uiuc.edu">vwelch@ncsa.uiuc.edu</A>&gt;</P></CENTER>
 
@@ -176,7 +176,7 @@ on the client's host and install the krb525 program in the krb5/bin directory.</
 
 <P>On the client host as root, run the following:</P>
 
-<PRE>krb525 -k -m krb525 -v test /tmp/ccache.test</PRE>
+<PRE>krb525 -k -m krb525 -o /tmp/ccache.test -v test</PRE>
 
 <P>This will use krb525's key in the keytab to get a krbtgt for the client
 principal &quot;test&quot; and put it into the credentials cache &quot;/tmp/ccache.test&quot;.
@@ -188,9 +188,9 @@ use the keytab and kinit to create a krbtgt with the options you want and
 then use krb525 to change the client. For example to get a forwardable
 krbtgt with a renewable life of 7 days:</P>
 
-<P>kinit -k -f -r 7d -c /tmp/ccache.krb525 krb525</P>
+<PRE>kinit -k -f -r 7d -c /tmp/ccache.krb525 krb525</PRE>
 
-<P>krb525 -c /tmp/ccache.krb525 -v test /tmp/ccache.test</P>
+<PRE>krb525 -c /tmp/ccache.krb525 -o /tmp/ccache.test -v test</PRE>
 
 <P><BR>
 
