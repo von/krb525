@@ -1,7 +1,7 @@
 .\" 
 .\" krb525 man page
 .\"
-.\" $Id: krb525.1,v 1.3 1997/10/07 14:42:59 vwelch Exp $
+.\" $Id: krb525.1,v 1.4 1999/11/02 14:58:16 vwelch Exp $
 .\"
 .TH KRB525 1
 .SH NAME
@@ -14,8 +14,8 @@ krb525 \- Convert clients or servers on a Kerberos 5 ticket
 [\fB\-h\fP \fIserver_host\fP] [\fB\-i\fP \fIinput_cache\fP]
 [\fB\-k\fP] [\fB\-o\fP \fIoutput_cache\fP] [\fB\-p\fP \fIserver_port\fP]
 [\fB\-s\fP \fIservice\fP] [\fB\-S\fP \fItarget_service\fP]
-[\fB\-t\fP \fIkeytab_file\fP] [\fB\-u\fP \fIusername\fP] [\fB\-v\fP]
-[\fB\-V\fP]
+[\fB\-t\fP \fIkeytab_file\fP] [\fB\-u\fP \fIusername\fP] [\fB\-U\fP] 
+[\fB\-v\fP] [\fB\-V\fP]
 .br
 .SH DESCRIPTION
 .I krb525
@@ -88,9 +88,7 @@ indicate the client principal name.
 \fB\-o\fP \fIoutput_cache\fP
 specifies that the resulting credentials be stored in
 .IRoutput_cache .
-By default they will be stored in the user's default cache or in the 
-.I input_cache
-if that was specified (\fB\-i\fP).
+By default they will be stored in the user's default cache.
 .TP
 \fB\-p\fP \fIserver_port\fP
 specifies the port number on which to try to contact the krb525d(8)
@@ -122,6 +120,9 @@ option must be specified for this to be meaningful.
 \fB\-u\fP \fIuser\fP
 specifies the owner of the resulting credentials file should be
 .IR user .
+.TP
+.B \-U
+specifies krb525 should not chown the resulting credentials cache.
 .TP
 .B \-v
 specifies that

@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.14 1999/10/11 16:48:00 vwelch Exp $
+ * $Id: client.c,v 1.15 1999/11/02 14:58:16 vwelch Exp $
  *
  */
 
@@ -124,6 +124,7 @@ char *argv[];
     krb5_flags target_options = 0;
 
     /* Information about who should own target cache */
+    krb5_boolean dont_chown_cache = 0;
     char *cache_owner = NULL;
     uid_t uid = -1;
     gid_t gid = -1;
@@ -164,7 +165,7 @@ char *argv[];
 	progname = argv[0];
 
     /* Process arguments */
-    while ((arg = getopt(argc, argv, "aAc:C:g:h:i:ko:p:s:S:t:u:vV")) != EOF)
+    while ((arg = getopt(argc, argv, "aAc:C:g:h:i:ko:p:s:S:t:u:UvV")) != EOF)
 	switch (arg) {
 	case 'a':
 #ifdef AFS_KRB5
@@ -232,6 +233,10 @@ char *argv[];
 	    cache_owner = optarg;
 	    break;
 
+	case 'U':
+	    dont_chown_cache = 1;
+	    break;
+
 	case 'v':
 	    verbose++;
 	    break;
@@ -289,6 +294,7 @@ char *argv[];
 		"   -S <target service>      Service to convert to\n"
 		"   -t <keytab file>         Keytab file to use\n"
 		"   -u <username>            Specify owner of output cache\n"
+		"   -U                       Don't chown output cache\n"
 		"   -v                       Verbose mode\n"
 		"   -V                       Print version and exit\n",
 		progname);
@@ -472,13 +478,8 @@ char *argv[];
     }
 
     /*
-     * Figure out our target cache. If we were given one then use
-     * that. If no and we're were given a source cache then use that,
-     * otherwise use the default.
+     * Figure out our target cache.
      */
-    if (!target_cache_name && source_cache_name)
-	target_cache_name = source_cache_name;
-
     if (target_cache_name)
 	retval = krb5_cc_resolve(context, target_cache_name,
 				     &target_ccache);
@@ -516,37 +517,34 @@ char *argv[];
     }
 
     /*
-     * If we're creating a new cache, figure out who should own it. If a
-     * user was specified on the command line then use that user.
+     * If we're root and a target owner for the target cache was not
+     * specified and we were not told to not chown the target cache,
+     * then we chown the cache to the uid of the target principal.
      */
+    if (geteuid() && !cache_owner && !dont_chown_cache) {
+	char *realm;
+
+	cache_owner = strdup(target_cname);
+
+	/* Remove realm */
+	if (realm = strchr(cache_owner, '@'))
+	    *realm = '\0';
+
+	if (verbose)
+	    printf("Since we're root we will try to chown the cache to %s\n",
+		   cache_owner);
+    }	
+
     if (cache_owner) {	
+	if (verbose)
+	    printf("Looking up uid and gid for %s for chowning cache\n",
+		   cache_owner);
+
 	if (get_guid(cache_owner, &uid, &gid)) {
 	    fprintf(stderr,
 		    "Could not resolve uid and gid for %s\n", cache_owner);
 	    perror("User lookup");
 	    error_exit();
-	}
-    } else {
-	/*
-	 * If we're using a keytab, or if the target client differs from
-	 * the original client then try to set the ownership to the
-	 * target client, but fail silently.
-	 *
-	 * Not 100% sure this is what is desired, but we'll try it for now.
-	 */
-	if (use_keytab || strcmp(cname, target_cname)) {
-	    char *realm;
-
-	    cache_owner = strdup(target_cname);
-
-	    if (realm = strchr(cache_owner, '@'))
-		*realm = '\0';
-	    
-	    if (get_guid(cache_owner, &uid, &gid)) {
-		/* Fail silently */
-		uid = -1;
-		gid = -1;
-	    }
 	}
     }
  
@@ -770,6 +768,7 @@ char *argv[];
 
 	/* Massage other fields of credentials */
 	target_creds.client = target_cprinc;
+	target_creds.server = target_sprinc;
 
 	/* Ok now store the ticket */
 
@@ -802,13 +801,14 @@ char *argv[];
 	    error_exit();
 	}
 
-	if (verbose && (uid != -1))
-	    printf("Changing owner of credentials cache to %s\n",
-		   cache_owner);
+	if (verbose && (geteuid() == 0) && (uid != -1)) {
+	    printf("Changing owner of credentials cache to %s (uid = %d gid = %d\n",
+		   cache_owner, uid, gid);
 
-	if (chown(target_cache_name, uid, gid)) {
-	    perror("Setting owner of credentials cache");
-	    error_exit();
+	    if (chown(target_cache_name, uid, gid)) {
+		perror("Setting owner of credentials cache");
+		error_exit();
+	    }
 	}
 
 #ifdef AFS_KRB5	
