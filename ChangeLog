@@ -1,5 +1,8 @@
 1999-10-06  Von Welch  <vwelch@ncsa.uiuc.edu>
 
+	* parse_conf.c (free_pconf_enteries): Fixed bug that caused
+	segfault when free_pconf_enteries() was called.
+
 	* Makefile.in: Added build of krb525_check_conf
 
 	* krb525_check_conf.1: Added this file

@@ -3,7 +3,7 @@
  *
  * Routines to read and parse a configuration file.
  *
- * $Id: parse_conf.c,v 1.3 1997/09/25 19:28:53 vwelch Exp $
+ * $Id: parse_conf.c,v 1.4 1999/10/06 19:12:16 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -125,7 +125,7 @@ free_pconf_enteries(pconf_entry *entry)
 		string++;
 	    }
 	    
-	    free(entry->strings);
+	    free(entry->values);
 	}
 
 
