@@ -130,7 +130,7 @@ The following security features are built into krb525/krb525d:
 
  -All error messages returned from the krb525d daemon to the krb525
   client are intentionally vague to prevent someone from gleaming
-  informatino about the contents of the krb525.conf file.
+  information about the contents of the krb525.conf file.
 
  -When getting service keys from the Kerberos 5 database the krb525d
   daemons checks the validity of all outgoing tickets in the same
@@ -168,4 +168,4 @@ comments and bug reports should be directed to him.
 
 ----
 
-$Id: README,v 1.1 1997/09/25 19:28:36 vwelch Exp $
+$Id: README,v 1.2 1999/10/06 15:18:36 vwelch Exp $
