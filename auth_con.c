@@ -3,7 +3,7 @@
  *
  * Functions dealing with Kerberos auth_context.
  *
- * $Id: auth_con.c,v 1.4 1999/10/08 19:49:24 vwelch Exp $
+ * $Id: auth_con.c,v 1.5 1999/10/11 16:45:05 vwelch Exp $
  */
 
 #ifdef HAVE_CONFIG_H
@@ -41,7 +41,7 @@ setup_auth_context(krb5_context context,
     }
 
     namelen = sizeof(remoteaddr);
-    if (getpeername(0, (struct sockaddr *)&remoteaddr, &namelen) < 0) {
+    if (getpeername(sock, (struct sockaddr *)&remoteaddr, &namelen) < 0) {
 	sprintf(auth_con_error, "getpeername() failed");
 	return -1;
     }
