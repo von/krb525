@@ -3,7 +3,7 @@
  *
  * krb525 client program
  *
- * $Id: client.c,v 1.8 1997/10/17 20:15:32 vwelch Exp $
+ * $Id: client.c,v 1.9 1997/11/10 19:57:08 vwelch Exp $
  *
  */
 
@@ -273,7 +273,7 @@ char *argv[];
 #endif /* AFS_KRB5 */
 
     if (arg_error) {
-	fprintf(stderr, "%s: [<options>]\n"
+	fprintf(stderr, "Usage: %s [<options>]\n"
 		" Options are:\n"
 #ifdef AFS_KRB5
 		"   -a                       Run aklog after acquiring new credentials\n"
@@ -290,7 +290,7 @@ char *argv[];
 		"   -S <target service>      Service to convert to\n"
 		"   -t <keytab file>         Keytab file to use\n"
 		"   -u <username>            Specify owner of output cache\n"
-		"   -v                       Verbose mode\n",
+		"   -v                       Verbose mode\n"
 		"   -V                       Print version and exit\n",
 		progname);
 	exit(1);
